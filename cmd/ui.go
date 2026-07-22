@@ -1,9 +1,10 @@
 package main
 
 import (
-	"github.com/gdamore/tcell/v2"
 	"sync"
 	"time"
+
+	"github.com/gdamore/tcell/v2"
 )
 
 // TODO: is there a way to get rid of this global var?
@@ -129,13 +130,19 @@ func (u *ui) handleElementKey(r rune) {
 // interact activates the given element and blocks handling input for it until it closes itself
 // or is closed with ESC.
 func (u *ui) interact(b element) {
+	u.interactFor(b, u.amiibo())
+}
+
+// interactFor is interact operating on an explicitly given amiibo, so a modal can be driven for
+// an amiibo that is no longer the active one.
+func (u *ui) interactFor(b element, am *amb) {
 	deactivate := func(b element) {
 		u.logBox.content <- encodeStringCell("Deactivating '" + b.name() + "' box")
 		b.deactivate()
 	}
 
 	u.logBox.content <- encodeStringCell("Activating '" + b.name() + "' box...")
-	done := b.activate(u.amiibo())
+	done := b.activate(am)
 	if done == nil {
 		return
 	}
@@ -212,28 +219,52 @@ func (u *ui) handleTokenRemoved() {
 		}
 	}()
 
+	// finish closes the prompt and, when asked to and the view still shows the removed token's
+	// amiibo, clears the view. A new token may have replaced the view while the prompt was open;
+	// in that case the new view is kept. The full redraw repairs whatever the background amiibo
+	// listener may have drawn underneath the prompt in the meantime.
+	finish := func(clear bool) {
+		u.removal.deactivate()
+		if u.amiibo() != am {
+			u.logBox.content <- encodeStringCell("New token placed, keeping amiibo view")
+		} else if clear {
+			u.clearView()
+		}
+		u.sync()
+	}
+
 	for {
 		ev := u.pollEvent()
 		switch e := ev.(type) {
 		case *eventRemovalTick:
+			if u.amiibo() != am {
+				// A new token was placed on the portal: the prompt is now moot.
+				finish(false)
+				return
+			}
 			u.removal.tick(e.remaining)
 		case *eventTokenRemoved:
 			if e.timedOut {
-				u.removal.deactivate()
 				u.logBox.content <- encodeStringCell("No answer, clearing amiibo view")
-				u.clearView()
+				finish(true)
 				return
 			}
 		case *tcell.EventKey:
 			switch {
 			case e.Key() == tcell.KeyEscape || e.Rune() == 'c' || e.Rune() == 'C':
-				u.removal.deactivate()
-				u.clearView()
+				finish(true)
 				return
 			case e.Rune() == 's' || e.Rune() == 'S':
 				u.removal.deactivate()
-				u.interact(u.save)
-				u.clearView()
+				// Save the amiibo the prompt was shown for, even when a new token has replaced
+				// the view in the meantime.
+				u.interactFor(u.save, am)
+				if u.amiibo() != am {
+					u.logBox.content <- encodeStringCell("New token placed, keeping amiibo view")
+				} else {
+					u.clearView()
+				}
+				u.sync()
 				return
 			}
 		}
@@ -416,7 +447,11 @@ func tui(conf *config) {
 				u.sync()
 			}
 		case *eventTokenRemoved:
-			u.handleTokenRemoved()
+			// A timed out event can only be a stray of an already closed prompt: the live one
+			// consumes its own timeout.
+			if !e.timedOut {
+				u.handleTokenRemoved()
+			}
 		case *tcell.EventKey:
 			switch {
 			case e.Key() == tcell.KeyEscape || e.Key() == tcell.KeyCtrlC:

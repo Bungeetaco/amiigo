@@ -178,7 +178,7 @@ func newUi(invertImage bool) *ui {
 
 	// TODO: prevent overwriting modals when they're active (like reading a new amiibo while the dump modal is open)
 	save := newFilenameModal(s, boxOpts{title: "save dump", key: 's', xPos: -1, yPos: -1, width: 30, height: 10, minHeight: 6, minWidth: 84, needAmiibo: true}, logs.content, saveDump)
-	load := newFilenameModal(s, boxOpts{title: "load dump", key: 'l', xPos: -1, yPos: -1, width: 30, height: 10, minHeight: 6, minWidth: 84}, logs.content, loadDump)
+	load := newFileBrowserModal(s, boxOpts{title: "load dump", key: 'l', xPos: -1, yPos: -1, width: 70, height: 70, minHeight: 24, minWidth: 84}, logs.content, loadDump)
 	// TODO: it would be cool to highlight the different data blocks in the hex dump (like ID, save data, ...)
 	hex := newTextModal(s, boxOpts{title: "view dump as hex", key: 'h', xPos: -1, yPos: -1, width: 84, height: 36, typ: boxTypeCharacter, needAmiibo: true, scroll: true}, logs.content)
 	write := newOptionsModal(

@@ -6,12 +6,16 @@ import (
 	"encoding/hex"
 	"fmt"
 	"image"
+	_ "image/jpeg" // Register decoders for image.Decode: the amiibo
+	_ "image/png"  // image repository holds png, jpeg and webp files.
 	"io"
 	"net/http"
 	"os"
 	"path"
 	"strings"
 	"time"
+
+	_ "golang.org/x/image/webp" // Newer amiibo images are webp files with a .png extension.
 )
 
 const (

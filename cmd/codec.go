@@ -18,6 +18,10 @@ func encodeStringCellWarning(s string) []byte {
 }
 
 func encodeStringCellWithAttrs(s string, a tcell.AttrMask, suf string) []byte {
+	return encodeStringCellColour(s, fontColour, a, suf)
+}
+
+func encodeStringCellColour(s string, c tcell.Color, a tcell.AttrMask, suf string) []byte {
 	if !strings.HasSuffix(s, suf) {
 		s += "\n"
 	}
@@ -26,7 +30,7 @@ func encodeStringCellWithAttrs(s string, a tcell.AttrMask, suf string) []byte {
 	for i, r := range s {
 		offset := i * tcellSize
 		binary.LittleEndian.PutUint32(b[offset+0:], uint32(r))           // rune
-		binary.LittleEndian.PutUint64(b[offset+4:], uint64(fontColour))  // foreground
+		binary.LittleEndian.PutUint64(b[offset+4:], uint64(c))           // foreground
 		binary.LittleEndian.PutUint64(b[offset+12:], uint64(backColour)) // background
 		binary.LittleEndian.PutUint64(b[offset+20:], uint64(a))          // attributes
 	}

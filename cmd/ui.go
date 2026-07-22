@@ -74,6 +74,7 @@ type ui struct {
 	logBox   *box
 	save     element
 	removal  *removalPrompt
+	actions  *actionsBox
 	write    chan []byte
 	amb      *amb
 	ambNfcId []byte
@@ -316,14 +317,12 @@ func newUi(invertImage bool) *ui {
 	}
 
 	s, _ := initScreen()
-	info := newBox(s, boxOpts{title: "info", xPos: 1, yPos: logoHeight() + 1, width: 16, height: 58})
-	image := newImageBox(s, boxOpts{title: "image", xPos: -1, yPos: -1, width: 36, height: 58, bgColor: tcell.ColorBlack}, invertImage)
-	usage := newBox(s, boxOpts{title: "usage", key: 'u', xPos: -1, yPos: -1, width: 46, height: 58, scroll: true})
+	info := newBox(s, boxOpts{title: "info", xPos: 1, yPos: logoHeight() + 1, width: 16, height: 70})
+	image := newImageBox(s, boxOpts{title: "image", xPos: -1, yPos: -1, width: 36, height: 70, bgColor: tcell.ColorBlack}, invertImage)
+	usage := newBox(s, boxOpts{title: "usage", key: 'u', xPos: -1, yPos: -1, width: 46, height: 70, scroll: true})
 	// TODO: fix scrolling for boxes with the tail option!
 	logs := newBox(s, boxOpts{title: "logs", stripLeadingSpace: true, xPos: -1, yPos: -1, width: 52, height: 20, tail: true, history: true})
-	// The actions box has a fixed character height so every action stays visible: a box does not
-	// grow with its content and silently drops lines that do not fit.
-	actions := newBox(s, boxOpts{title: "actions", xPos: -1, yPos: -1, width: 46, height: len(actionsContent)/2 + 3, typ: boxTypeCharacter, fixedContent: actionsContent})
+	actions := newActionsBox(s, boxOpts{title: "actions", xPos: -1, yPos: -1, width: 46, height: 20}, actionsContent)
 
 	u := &ui{
 		s:        s,
@@ -369,6 +368,7 @@ func newUi(invertImage bool) *ui {
 	u.elements = []element{info, image, usage, logs, actions, save, load, write, hex, nick, edit, fp, reset}
 	u.save = save
 	u.removal = newRemovalPrompt(s, logs.content)
+	u.actions = actions
 
 	return u
 }
@@ -473,6 +473,10 @@ func tui(conf *config) {
 			case e.Rune() == 'I' || e.Rune() == 'i':
 				u.logBox.content <- encodeStringCell("Toggle image invert")
 				u.imageBox.invertImage()
+			case e.Key() == tcell.KeyLeft:
+				u.actions.flip(-1)
+			case e.Key() == tcell.KeyRight:
+				u.actions.flip(1)
 			case e.Rune() == 'T' || e.Rune() == 't':
 				conf.ui.clearOnRemove = !conf.ui.clearOnRemove
 				state := "enabled"
@@ -480,6 +484,8 @@ func tui(conf *config) {
 					state = "disabled"
 				}
 				u.logBox.content <- encodeStringCell("Clear view on token removal " + state)
+				// Refresh the actions box so the toggle checkbox reflects the new state.
+				u.actions.flip(0)
 			default:
 				u.handleElementKey(e.Rune())
 			}

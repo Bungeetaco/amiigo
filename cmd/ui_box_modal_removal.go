@@ -10,7 +10,7 @@ import (
 // removalPrompt represents the modal shown when a token is removed from the NFC portal while the
 // clear-on-remove option is active. Its keys are handled by ui.handleTokenRemoved since the
 // prompt needs a timeout, which the regular modal input flow does not support. The remaining
-// time counts down in the prompt and the border flashes red during the final ten seconds.
+// time counts down in the prompt and the border flashes red during the final seconds.
 type removalPrompt struct {
 	*modal
 	remaining int // Remaining time in seconds, shown in the prompt.
@@ -56,7 +56,7 @@ func (r *removalPrompt) draw(x, y int) {
 func (r *removalPrompt) drawCountdown() {
 	x, y := r.getXY()
 	style := tcell.StyleDefault.Background(backColour).Foreground(fontColour)
-	if r.remaining <= 10 {
+	if r.remaining <= removalAlert {
 		style = style.Foreground(tcell.ColorRed).Attributes(tcell.AttrBold)
 	}
 
@@ -81,7 +81,7 @@ func (r *removalPrompt) tick(rem time.Duration) {
 	}
 
 	r.flash = !r.flash
-	if r.remaining <= 10 {
+	if r.remaining <= removalAlert {
 		r.paintBorder(r.flash)
 	} else {
 		r.paintBorder(false)

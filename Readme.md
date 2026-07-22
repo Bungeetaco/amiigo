@@ -130,7 +130,7 @@ the amiibo to disk and then clears the info, image and usage boxes, so data
 from the previous token never lingers on screen. Press `s` in the prompt to
 save first (aborting the save keeps the view, so nothing is lost), `k` to keep
 the amiibo loaded, `c` or ESC to clear right away; without an answer the view
-clears by itself after 30 seconds. Clearing plays the reveal animations in
+clears by itself after 10 seconds. Clearing plays the reveal animations in
 reverse: the details delete themselves and the image dissolves into matrix
 rain.
 

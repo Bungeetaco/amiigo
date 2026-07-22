@@ -12,7 +12,12 @@ import (
 var amiiboChan chan *amb // amiiboChan is the main channel to pass amb structs around.
 
 // removalTimeout is how long the token removal prompt waits before clearing the view anyway.
-const removalTimeout = 30 * time.Second
+// Short, since a cleared amiibo stays in the backup memory and can be restored with b.
+const removalTimeout = 10 * time.Second
+
+// removalAlert is the remaining time at which the removal prompt escalates from flashing its
+// title to flashing its full border in red.
+const removalAlert = 5
 
 // eventTokenRemoved is posted to the tcell event queue when a token is removed from the NFC
 // portal, so the main event loop can show the removal prompt. With timedOut set it signals that

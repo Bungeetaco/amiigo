@@ -56,6 +56,36 @@ Datel's PowerSaves For Amiibo portal has been tested!**
 
 Expert mode cannot be set using the config file!
 
+**Note:** the public AmiiboAPI at amiiboapi.com was shut down on December 31st
+2025, so the default `amiibo_api_base_url` no longer works. To keep character
+info, artwork and usage data working, self-host the open source API (see
+[Bungeetaco/AmiiboAPI](https://github.com/Bungeetaco/AmiiboAPI) for a version
+ported to Flask 3 / Python 3.14) and point `amiibo_api_base_url` at it, e.g.
+`http://localhost:5000`. Reading, writing and decrypting dumps works fine
+without the API.
+
+### Loading dumps: file browser
+Pressing `l` opens a file browser instead of a plain filename prompt:
+
+- The left pane lists directories and `.bin` files; the title bar shows the
+  current path and your position in the listing.
+- The right pane shows a live preview of the highlighted dump: file size,
+  format (raw NTAG215 or amiitool), encryption state, amiibo ID and — when the
+  amiibo API is reachable — the character name, series, type, release date and
+  a scaled ASCII art render of the character image.
+
+Navigation keys:
+- `↑`/`↓`, `PgUp`/`PgDn`, `Home`/`End`: move the selection
+- `→` or `Enter` on a directory: enter it
+- `←` or `Backspace`: go to the parent directory
+- `Enter` on a file: load it
+- `ESC`: close the browser
+
+The browser remembers the last used directory for the duration of the session.
+Previews and images are cached, and image fetching supports png, jpeg and webp
+(newer images in the amiibo image repository are webp files with a `.png`
+extension).
+
 ## Packages
 This codebase provides several stand-alone packages which can be used in your own go
 projects.

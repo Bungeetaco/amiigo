@@ -1,2 +1,3 @@
 SSBU region definitions and ability list taken from the MIT licensed
 smash-amiibo-editor project: https://github.com/jozz024/smash-amiibo-editor
+The defaults template also comes from smash-amiibo-editor (templates/default.json).

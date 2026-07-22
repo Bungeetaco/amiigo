@@ -103,6 +103,8 @@ func (f *fpEditModal) handleInput(e *tcell.EventKey) {
 			f.log <- encodeStringCell("Initialized amiibo as a new SSBU figure player")
 			f.stash(t)
 			f.fail = ""
+			// A brand new figure player starts with the default behaviour profile, not zeroes.
+			f.applyDefaults()
 			f.redrawContent()
 		}
 		return
@@ -133,6 +135,15 @@ func (f *fpEditModal) handleInput(e *tcell.EventKey) {
 		f.stepSel(-1000)
 	case e.Rune() == '}':
 		f.stepSel(1000)
+	case e.Rune() == 'd':
+		r := &ssbuRegions[f.sel]
+		r.setRawValue(f.internal, r.def)
+		f.enforceStats(r)
+		f.redrawContent()
+	case e.Rune() == 'D':
+		f.applyDefaults()
+		f.log <- encodeStringCell("All figure player values reset to the in game defaults")
+		f.redrawContent()
 	case e.Rune() == 'z' || e.Rune() == 'Z':
 		r := &ssbuRegions[f.sel]
 		min, _ := r.bounds()
@@ -183,6 +194,14 @@ func (f *fpEditModal) stepSel(n int64) {
 		f.enforceStats(r)
 	}
 	f.redrawContent()
+}
+
+// applyDefaults sets every region to the value of a brand new in game figure player.
+func (f *fpEditModal) applyDefaults() {
+	for i := range ssbuRegions {
+		r := &ssbuRegions[i]
+		r.setRawValue(f.internal, r.def)
+	}
 }
 
 // abilityRegions returns the three ability regions.
@@ -354,7 +373,7 @@ func (f *fpEditModal) redrawContent() {
 		return
 	}
 
-	f.drawStr(left, top, "←/→ [ ] { } change value, z min, x max, ENTER apply, ESC abort", base.Attributes(tcell.AttrDim))
+	f.drawStr(left, top, "←/→ [ ] { } change value, z min, x max, d/D default one/all, ENTER apply, ESC abort", base.Attributes(tcell.AttrDim))
 
 	// Status line with the support slot usage and the legal stat budget.
 	if att, def := ssbuRegionByName("Attack Stat"), ssbuRegionByName("Defense Stat"); att != nil && def != nil {

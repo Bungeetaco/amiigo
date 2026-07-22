@@ -22,6 +22,9 @@ var ssbuRegionsJson []byte
 //go:embed resources/ssbu_abilities.txt
 var ssbuAbilitiesTxt []byte
 
+//go:embed resources/ssbu_defaults.json
+var ssbuDefaultsJson []byte
+
 // ssbuOption is a single named value for an enum or ability region.
 type ssbuOption struct {
 	name  string
@@ -39,6 +42,7 @@ type ssbuRegion struct {
 	options     []ssbuOption
 	legalMin    *int64 // Overrides the storage minimum with the minimum legal in game.
 	legalMax    *int64 // Overrides the storage maximum with the maximum legal in game.
+	def         int64  // The raw value of a brand new in game figure player.
 }
 
 // ssbuRegions holds all editable region definitions, parsed once on first use.
@@ -134,7 +138,42 @@ func loadSSBURegions() error {
 			reg.legalMin, reg.legalMax = i64(0), i64(ssbuStatBudgetFree)
 		}
 
+		// Learning is on for a brand new figure player; everything else defaults to zero unless
+		// the defaults template below says otherwise.
+		if reg.name == "Learning" {
+			reg.def = 1
+		}
+
 		ssbuRegions = append(ssbuRegions, reg)
+	}
+
+	return loadSSBUDefaults()
+}
+
+// loadSSBUDefaults parses the embedded defaults template, holding the behaviour percentages of a
+// brand new in game figure player. The keys are section signatures in the form
+// "percentage-<start>-<length>-<bit start>" with a percentage as value.
+func loadSSBUDefaults() error {
+	var defs map[string]string
+	if err := json.Unmarshal(ssbuDefaultsJson, &defs); err != nil {
+		return err
+	}
+
+	for i := range ssbuRegions {
+		r := &ssbuRegions[i]
+		if r.typ != "percentage" {
+			continue
+		}
+		v, ok := defs[fmt.Sprintf("percentage-%d-%d-%d", r.start, r.length, r.bitStart)]
+		if !ok {
+			continue
+		}
+		pct, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			return fmt.Errorf("default for %s: %s", r.name, err)
+		}
+		_, max := r.bounds()
+		r.def = int64(pct/100*float64(max) + 0.5)
 	}
 
 	return nil

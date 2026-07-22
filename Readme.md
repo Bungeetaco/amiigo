@@ -109,7 +109,9 @@ write action.
   type, attack and defense stats, level experience and the full set of
   behaviour percentages. Use the arrow keys to select, `←`/`→`, `[`/`]` and
   `{`/`}` to change values in steps of 1, 10 and 1000, `z`/`x` for minimum
-  and maximum, ENTER to apply. Changed entries are highlighted and the
+  and maximum, `d`/`D` to reset the selected value or all values to the
+  in game defaults, ENTER to apply. Initializing a new figure player also
+  starts from the default behaviour profile, exactly like the game does. Changed entries are highlighted and the
   selected parameter's description is shown at the bottom. When the loaded
   amiibo holds no SSBU data yet it can be initialized as a brand new figure
   player from within the editor, exactly like the game does on first use.

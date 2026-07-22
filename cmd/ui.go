@@ -135,8 +135,9 @@ func (u *ui) interact(b element) {
 }
 
 // interactFor is interact operating on an explicitly given amiibo, so a modal can be driven for
-// an amiibo that is no longer the active one.
-func (u *ui) interactFor(b element, am *amb) {
+// an amiibo that is no longer the active one. It returns true when the element completed and
+// closed itself, false when it was aborted with ESC.
+func (u *ui) interactFor(b element, am *amb) bool {
 	deactivate := func(b element) {
 		u.logBox.content <- encodeStringCell("Deactivating '" + b.name() + "' box")
 		b.deactivate()
@@ -145,14 +146,14 @@ func (u *ui) interactFor(b element, am *amb) {
 	u.logBox.content <- encodeStringCell("Activating '" + b.name() + "' box...")
 	done := b.activate(am)
 	if done == nil {
-		return
+		return false
 	}
 	u.logBox.content <- encodeStringCell("...'" + b.name() + "' box active; ESC to deactivate")
 	for {
 		select {
 		case <-done:
 			deactivate(b)
-			return
+			return true
 		default:
 			ev := u.pollEvent()
 			switch e := ev.(type) {
@@ -161,7 +162,7 @@ func (u *ui) interactFor(b element, am *amb) {
 				// TODO: do we deal with CTRL+C here, or just leave that be?
 				case e.Key() == tcell.KeyEscape:
 					deactivate(b)
-					return
+					return false
 				default:
 					b.handleKey(e)
 				}
@@ -259,11 +260,15 @@ func (u *ui) handleTokenRemoved() {
 				u.removal.deactivate()
 				// Save the amiibo the prompt was shown for, even when a new token has replaced
 				// the view in the meantime.
-				u.interactFor(u.save, am)
-				if u.amiibo() != am {
+				saved := u.interactFor(u.save, am)
+				switch {
+				case u.amiibo() != am:
 					u.logBox.content <- encodeStringCell("New token placed, keeping amiibo view")
-				} else {
+				case saved:
 					u.clearView()
+				default:
+					// The save was aborted: keep the view so the data is not lost.
+					u.logBox.content <- encodeStringCell("Save aborted, keeping amiibo view")
 				}
 				u.sync()
 				return

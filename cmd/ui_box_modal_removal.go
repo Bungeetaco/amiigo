@@ -65,8 +65,9 @@ func (r *removalPrompt) drawCountdown() {
 	}
 }
 
-// tick updates the countdown and flashes the border red during the final ten seconds. It is
-// called from the token removal interaction loop on every ticker event.
+// tick updates the countdown and flashes the title row to grab attention, escalating to the full
+// border during the final ten seconds. It is called from the token removal interaction loop on
+// every ticker event.
 func (r *removalPrompt) tick(rem time.Duration) {
 	if !r.active {
 		return
@@ -78,39 +79,56 @@ func (r *removalPrompt) tick(rem time.Duration) {
 		r.drawCountdown()
 	}
 
+	r.flash = !r.flash
 	if r.remaining <= 10 {
-		r.flash = !r.flash
+		r.paintBorder(r.flash)
 	} else {
-		r.flash = false
+		r.paintBorder(false)
+		r.paintTop(r.flash)
 	}
-	r.paintBorder(r.flash)
 
 	r.s.Show()
 }
 
-// paintBorder repaints the border of the prompt, in bold red when flash is true and in the
-// default style otherwise. The border runes themselves are preserved.
-func (r *removalPrompt) paintBorder(flash bool) {
+// flashStyle returns the style to repaint prompt chrome with.
+func flashStyle(flash bool) tcell.Style {
 	style := tcell.StyleDefault.Background(backColour).Foreground(fontColour)
 	if flash {
 		style = style.Foreground(tcell.ColorRed).Attributes(tcell.AttrBold)
 	}
+	return style
+}
 
+// repaint restyles a single cell, preserving its rune.
+func (r *removalPrompt) repaint(cx, cy int, style tcell.Style) {
+	mainc, combc, _, _ := r.s.GetContent(cx, cy)
+	r.s.SetContent(cx, cy, mainc, combc, style)
+}
+
+// paintTop repaints the top border row holding the title, in bold red when flash is true and in
+// the default style otherwise.
+func (r *removalPrompt) paintTop(flash bool) {
+	style := flashStyle(flash)
+	x, y := r.getXY()
+	for i := 0; i < r.width(); i++ {
+		r.repaint(x+i, y, style)
+	}
+}
+
+// paintBorder repaints the full border of the prompt, in bold red when flash is true and in the
+// default style otherwise. The border runes themselves are preserved.
+func (r *removalPrompt) paintBorder(flash bool) {
+	style := flashStyle(flash)
 	x, y := r.getXY()
 	w, h := r.width(), r.height()
 
-	repaint := func(cx, cy int) {
-		mainc, combc, _, _ := r.s.GetContent(cx, cy)
-		r.s.SetContent(cx, cy, mainc, combc, style)
-	}
-
 	for i := 0; i < w; i++ {
-		repaint(x+i, y)
-		repaint(x+i, y+h-1)
+		r.repaint(x+i, y, style)
+		r.repaint(x+i, y+h-1, style)
 	}
 	for j := 1; j < h-1; j++ {
-		repaint(x, y+j)
-		repaint(x+w-1, y+j)
+		r.repaint(x, y+j, style)
+		r.repaint(x+w-1, y+j, style)
 	}
 }
 

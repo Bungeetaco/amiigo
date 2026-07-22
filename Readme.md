@@ -124,8 +124,9 @@ write action.
 When a token is taken off the NFC portal, amiigo asks whether you want to save
 the amiibo to disk and then clears the info, image and usage boxes, so data
 from the previous token never lingers on screen. Press `s` in the prompt to
-save first, `c` or ESC to clear right away; without an answer the view clears
-by itself after 30 seconds.
+save first (aborting the save keeps the view, so nothing is lost), `c` or ESC
+to clear right away; without an answer the view clears by itself after 30
+seconds.
 
 This behaviour is on by default. Toggle it at runtime with `t`, or disable it
 permanently with `clear_on_remove = false` in the `[ui]` section of the config

@@ -9,6 +9,24 @@ import (
 // TODO: is there a way to get rid of this global var?
 var amiiboChan chan *amb // amiiboChan is the main channel to pass amb structs around.
 
+// removalTimeout is how long the token removal prompt waits before clearing the view anyway.
+const removalTimeout = 30 * time.Second
+
+// eventTokenRemoved is posted to the tcell event queue when a token is removed from the NFC
+// portal, so the main event loop can show the removal prompt. With timedOut set it signals that
+// the prompt has expired.
+type eventTokenRemoved struct {
+	tcell.EventTime
+	timedOut bool
+}
+
+// newEventTokenRemoved creates a new eventTokenRemoved ready for posting.
+func newEventTokenRemoved(timedOut bool) *eventTokenRemoved {
+	e := &eventTokenRemoved{timedOut: timedOut}
+	e.SetEventNow()
+	return e
+}
+
 // element defines the basic methods which any ui element should implement.
 type element interface {
 	// activate marks the element as active, so it will process events. The element MUST return nil
@@ -39,6 +57,8 @@ type ui struct {
 	imageBox *imageBox
 	usageBox *box
 	logBox   *box
+	save     element
+	removal  *removalPrompt
 	write    chan []byte
 	amb      *amb
 	ambNfcId []byte
@@ -84,37 +104,103 @@ func (u *ui) destroy() {
 
 // handleElementKey will block waiting for input for the active box.
 func (u *ui) handleElementKey(r rune) {
+	for _, b := range u.elements {
+		if b.hasKey(r) {
+			u.interact(b)
+			return
+		}
+	}
+}
+
+// interact activates the given element and blocks handling input for it until it closes itself
+// or is closed with ESC.
+func (u *ui) interact(b element) {
 	deactivate := func(b element) {
 		u.logBox.content <- encodeStringCell("Deactivating '" + b.name() + "' box")
 		b.deactivate()
 	}
 
-	for _, b := range u.elements {
-		if b.hasKey(r) {
-			u.logBox.content <- encodeStringCell("Activating '" + b.name() + "' box...")
-			done := b.activate(u.amiibo())
-			if done != nil {
-				u.logBox.content <- encodeStringCell("...'" + b.name() + "' box active; ESC to deactivate")
-				for {
-					select {
-					case <-done:
-						deactivate(b)
-						return
-					default:
-						ev := u.pollEvent()
-						switch e := ev.(type) {
-						case *tcell.EventKey:
-							switch {
-							// TODO: do we deal with CTRL+C here, or just leave that be?
-							case e.Key() == tcell.KeyEscape:
-								deactivate(b)
-								return
-							default:
-								b.handleKey(e)
-							}
-						}
-					}
+	u.logBox.content <- encodeStringCell("Activating '" + b.name() + "' box...")
+	done := b.activate(u.amiibo())
+	if done == nil {
+		return
+	}
+	u.logBox.content <- encodeStringCell("...'" + b.name() + "' box active; ESC to deactivate")
+	for {
+		select {
+		case <-done:
+			deactivate(b)
+			return
+		default:
+			ev := u.pollEvent()
+			switch e := ev.(type) {
+			case *tcell.EventKey:
+				switch {
+				// TODO: do we deal with CTRL+C here, or just leave that be?
+				case e.Key() == tcell.KeyEscape:
+					deactivate(b)
+					return
+				default:
+					b.handleKey(e)
 				}
+			}
+		}
+	}
+}
+
+// clearView clears the active amiibo and all boxes displaying its data.
+func (u *ui) clearView() {
+	u.Lock()
+	u.amb = nil
+	u.ambNfcId = nil
+	u.Unlock()
+
+	u.infoBox.clearContent()
+	u.usageBox.clearContent()
+	u.imageBox.clearImage()
+	u.logBox.content <- encodeStringCell("Amiibo view cleared")
+}
+
+// handleTokenRemoved shows the token removal prompt and clears the amiibo view unless the user
+// chooses to save first, in which case the save modal is chained before clearing. Without an
+// answer within removalTimeout the view is cleared anyway.
+func (u *ui) handleTokenRemoved() {
+	am := u.amiibo()
+	if !conf.ui.clearOnRemove || am == nil || am.a == nil {
+		return
+	}
+
+	if u.removal.activate(am) == nil {
+		u.clearView()
+		return
+	}
+
+	timeout := time.AfterFunc(removalTimeout, func() {
+		u.s.PostEvent(newEventTokenRemoved(true))
+	})
+	defer timeout.Stop()
+
+	for {
+		ev := u.pollEvent()
+		switch e := ev.(type) {
+		case *eventTokenRemoved:
+			if e.timedOut {
+				u.removal.deactivate()
+				u.logBox.content <- encodeStringCell("No answer, clearing amiibo view")
+				u.clearView()
+				return
+			}
+		case *tcell.EventKey:
+			switch {
+			case e.Key() == tcell.KeyEscape || e.Rune() == 'c' || e.Rune() == 'C':
+				u.removal.deactivate()
+				u.clearView()
+				return
+			case e.Rune() == 's' || e.Rune() == 'S':
+				u.removal.deactivate()
+				u.interact(u.save)
+				u.clearView()
+				return
 			}
 		}
 	}
@@ -159,6 +245,7 @@ func newUi(invertImage bool) *ui {
 		"n: ", "set amiibo nickname",
 		"r: ", "reset gameplay data",
 		"s: ", "save dump to disk",
+		"t: ", "toggle clear view on token removal",
 		"w: ", "write amiibo data to token",
 		"ESC: ", "double press to quit",
 	}
@@ -213,6 +300,8 @@ func newUi(invertImage bool) *ui {
 	)
 
 	u.elements = []element{info, image, usage, logs, actions, save, load, write, hex, nick, edit, fp, reset}
+	u.save = save
+	u.removal = newRemovalPrompt(s, logs.content)
 
 	return u
 }
@@ -254,6 +343,10 @@ func tui(conf *config) {
 				if am.nfc && am.a == nil {
 					// An amb struct with nfc set to true and a nil amiibo signals a token removal.
 					u.resetAmbNfcId()
+					if conf.ui.clearOnRemove {
+						// Let the main event loop show the removal prompt.
+						u.s.PostEvent(newEventTokenRemoved(false))
+					}
 					break
 				}
 				u.setAmiibo(am)
@@ -288,6 +381,8 @@ func tui(conf *config) {
 			if time.Since(t) > 500*time.Millisecond {
 				u.sync()
 			}
+		case *eventTokenRemoved:
+			u.handleTokenRemoved()
 		case *tcell.EventKey:
 			switch {
 			case e.Key() == tcell.KeyEscape || e.Key() == tcell.KeyCtrlC:
@@ -307,6 +402,13 @@ func tui(conf *config) {
 			case e.Rune() == 'I' || e.Rune() == 'i':
 				u.logBox.content <- encodeStringCell("Toggle image invert")
 				u.imageBox.invertImage()
+			case e.Rune() == 'T' || e.Rune() == 't':
+				conf.ui.clearOnRemove = !conf.ui.clearOnRemove
+				state := "enabled"
+				if !conf.ui.clearOnRemove {
+					state = "disabled"
+				}
+				u.logBox.content <- encodeStringCell("Clear view on token removal " + state)
 			default:
 				u.handleElementKey(e.Rune())
 			}

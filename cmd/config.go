@@ -43,6 +43,9 @@ type config struct {
 type uiConf struct {
 	// invertImage will render images inverted as if they were selected by the cursor.
 	invertImage bool
+	// clearOnRemove will clear the amiibo view when the token is removed from the NFC portal,
+	// after offering to save the data to disk first. Can be toggled at runtime.
+	clearOnRemove bool
 }
 
 const (
@@ -60,7 +63,7 @@ var conf = &config{
 	cacheDir:         cacheDir,
 	logFile:          defaultLogFile,
 	amiiboApiBaseUrl: defaultAmiiboApiBaseUrl,
-	ui:               &uiConf{},
+	ui:               &uiConf{clearOnRemove: true},
 	quit:             make(chan struct{}),
 }
 
@@ -95,6 +98,11 @@ func loadConfig(cFile string, conf *config) error {
 		if k, err := i.GetKey("solid_images"); err == nil {
 			if v, err := k.Bool(); err == nil {
 				conf.ui.invertImage = v
+			}
+		}
+		if k, err := i.GetKey("clear_on_remove"); err == nil {
+			if v, err := k.Bool(); err == nil {
+				conf.ui.clearOnRemove = v
 			}
 		}
 	}

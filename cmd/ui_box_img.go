@@ -90,6 +90,12 @@ func (i *imageBox) drawImage() {
 	i.content <- buf
 }
 
+// clearImage removes the active image from the box and blanks its content area.
+func (i *imageBox) clearImage() {
+	i.img = nil
+	i.clearContent()
+}
+
 // invertImage inverts the display of the active image.
 func (i *imageBox) invertImage() {
 	switch i.attrs {

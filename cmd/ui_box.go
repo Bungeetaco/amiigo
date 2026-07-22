@@ -314,6 +314,28 @@ draw:
 	b.s.Show()
 }
 
+// clearContent empties the internal buffers of the box and blanks its content area on screen.
+func (b *box) clearContent() {
+	b.Lock()
+	defer b.Unlock()
+
+	b.sbbStart = 0
+	b.buffer.Reset()
+	b.sbb = nil
+
+	marginLeft, marginRight, marginTop, marginBottom := b.bounds()
+	if b.opts.scroll {
+		marginRight += 2 // Also clear the scrollbar column, drawn at marginRight + 2.
+	}
+	for y := marginTop; y <= marginBottom; y++ {
+		for x := marginLeft; x <= marginRight; x++ {
+			b.s.SetContent(x, y, 0, nil, tcell.StyleDefault.Background(b.opts.bgColor))
+		}
+	}
+
+	b.s.Show()
+}
+
 // draw draws a box with title where the 'animated' parameter defines how the box will be drawn.
 // The return values will be the first x column to the right side of the box and the first y column
 // below the box.

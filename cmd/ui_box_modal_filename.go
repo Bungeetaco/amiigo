@@ -9,10 +9,12 @@ import (
 // amiibo instance.
 type filenameSubmitHandler func(f string, amb *amb, log chan<- []byte) bool
 
-// filenameModal represents a modal that will request filename input.
+// filenameModal represents a modal that will request single line text input, e.g. a filename or
+// a nickname.
 type filenameModal struct {
 	*modal
 	filename  string
+	prompt    string
 	inputXPos int
 	inputYPos int
 	submit    filenameSubmitHandler
@@ -20,7 +22,12 @@ type filenameModal struct {
 
 // newFilenameModal creates a new filenameModal struct ready for use.
 func newFilenameModal(s tcell.Screen, opts boxOpts, log chan<- []byte, submit filenameSubmitHandler) *filenameModal {
-	fn := &filenameModal{submit: submit}
+	return newTextInputModal(s, opts, "Enter filename followed by enter, ESC to abort:", log, submit)
+}
+
+// newTextInputModal creates a new filenameModal struct with a custom prompt, ready for use.
+func newTextInputModal(s tcell.Screen, opts boxOpts, prompt string, log chan<- []byte, submit filenameSubmitHandler) *filenameModal {
+	fn := &filenameModal{prompt: prompt, submit: submit}
 	fn.modal = newModal(s, opts, fn.handleInput, fn.drawModalContent, fn.reset, log)
 
 	return fn
@@ -59,8 +66,7 @@ func (fn *filenameModal) drawModalContent(x, y int) {
 	start := x + 1
 	fn.inputXPos = start
 	fn.inputYPos = y + 1
-	prompt := "Enter filename followed by enter, ESC to abort:"
-	for _, char := range prompt {
+	for _, char := range fn.prompt {
 		fn.drawChar(char, tcell.StyleDefault)
 		fn.inputXPos++
 	}

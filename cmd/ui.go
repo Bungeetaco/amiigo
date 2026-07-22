@@ -151,9 +151,12 @@ func (u *ui) resetAmbNfcId() {
 func newUi(invertImage bool) *ui {
 	actionsContent := []string{
 		"d: ", "decrypt amiibo dump",
+		"e: ", "edit gameplay (app) data",
 		"h: ", "hex view of (decrypted) amiibo dump",
 		"i: ", "invert image view",
 		"l: ", "load dump from disk",
+		"n: ", "set amiibo nickname",
+		"r: ", "reset gameplay data",
 		"s: ", "save dump to disk",
 		"w: ", "write amiibo data to token",
 		"ESC: ", "double press to quit",
@@ -190,7 +193,24 @@ func newUi(invertImage bool) *ui {
 		u.write,
 	)
 
-	u.elements = []element{info, image, usage, logs, actions, save, load, write, hex}
+	nick := newTextInputModal(
+		s,
+		boxOpts{title: "set nickname", key: 'n', xPos: -1, yPos: -1, width: 30, height: 10, minHeight: 6, minWidth: 84, needAmiibo: true},
+		"Enter new nickname (max 10 chars) followed by enter, ESC to abort:",
+		logs.content,
+		setNickname,
+	)
+	edit := newHexEditModal(s, boxOpts{title: "edit gameplay data", key: 'e', xPos: -1, yPos: -1, width: 78, height: 20, typ: boxTypeCharacter, needAmiibo: true}, logs.content, applyAppData)
+	reset := newOptionsModal(
+		s,
+		boxOpts{title: "reset gameplay data", key: 'r', xPos: -1, yPos: -1, width: 80, height: 9, typ: boxTypeCharacter, needAmiibo: true},
+		logs.content,
+		[]mopts{{'w', "wipe all gameplay data so games see this amiibo as brand new", 0}},
+		resetAppData,
+		u.write,
+	)
+
+	u.elements = []element{info, image, usage, logs, actions, save, load, write, hex, nick, edit, reset}
 
 	return u
 }

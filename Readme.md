@@ -87,6 +87,31 @@ Previews and images are cached, and image fetching supports png, jpeg and webp
 (newer images in the amiibo image repository are webp files with a `.png`
 extension).
 
+### Editing amiibo data
+Three actions modify the loaded amiibo. All of them require the retail key,
+work on an in-memory copy (decrypted on the fly when needed) and re-encrypt
+with fresh HMAC signatures, so the result is immediately ready to save to disk
+or write to a token. Nothing touches your token until you explicitly use the
+write action.
+
+- `n`: set the amiibo nickname (max 10 characters).
+- `e`: edit the 216 byte gameplay (application) data block in a hex editor.
+  Navigate with the arrow keys, type hex digits to change nibbles, press ENTER
+  to apply or ESC to abort. Modified bytes are highlighted. When the amiibo
+  holds Super Smash Bros. Ultimate data, the checksum SSBU keeps inside the
+  block is recalculated automatically on apply.
+- `r`: reset gameplay data. Wipes the application data, application ID and
+  title ID and clears the appdata flag, so games treat the amiibo as brand
+  new. Handy for retraining SSBU figure players. The owner and nickname are
+  kept.
+
+Two things worth knowing. The settings CRC in the register info is calculated
+with a console unique hash, so it cannot be computed off-console; consoles
+detect the mismatch and rewrite it on their next write, which is also how
+other editors handle it. And games other than SSBU may keep their own
+checksums inside the application data, so blind hex edits can be rejected by
+the game even though the amiibo itself stays perfectly valid.
+
 ## Packages
 This codebase provides several stand-alone packages which can be used in your own go
 projects.

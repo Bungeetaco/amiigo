@@ -57,10 +57,11 @@ Datel's PowerSaves For Amiibo portal has been tested!**
 Expert mode cannot be set using the config file!
 
 **Note:** the public AmiiboAPI at amiiboapi.com was shut down on December 31st
-2025, so the default `amiibo_api_base_url` no longer works. To keep character
-info, artwork and usage data working, self-host the open source API (see
-[Bungeetaco/AmiiboAPI](https://github.com/Bungeetaco/AmiiboAPI) for a version
-ported to Flask 3 / Python 3.14) and point `amiibo_api_base_url` at it, e.g.
+2025, so the default `amiibo_api_base_url` no longer works. Either set it to
+`https://amiiboapi.org` (the actively maintained continuation by
+[8bitDream](https://github.com/8bitDream/AmiiboAPI)) or self-host the API (see
+[Bungeetaco/AmiiboAPI](https://github.com/Bungeetaco/AmiiboAPI), based on
+8bitDream's with a Flask 3 / Python 3.14 port) and point it at e.g.
 `http://localhost:5000`. Reading, writing and decrypting dumps works fine
 without the API.
 

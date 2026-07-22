@@ -301,18 +301,20 @@ func (u *ui) resetAmbNfcId() {
 
 // newUi create a new ui structure.
 func newUi(invertImage bool) *ui {
+	// Ordered in two workflow groups: dumps and viewing first, editing and options second, so a
+	// two column layout shows them side by side.
 	actionsContent := []string{
+		"l: ", "load dump from disk",
+		"s: ", "save dump to disk",
+		"w: ", "write amiibo data to token",
 		"d: ", "decrypt amiibo dump",
+		"h: ", "hex view of (decrypted) dump",
+		"i: ", "invert image view",
+		"n: ", "set amiibo nickname",
 		"e: ", "edit gameplay (app) data",
 		"f: ", "edit SSBU figure player",
-		"h: ", "hex view of (decrypted) amiibo dump",
-		"i: ", "invert image view",
-		"l: ", "load dump from disk",
-		"n: ", "set amiibo nickname",
 		"r: ", "reset gameplay data",
-		"s: ", "save dump to disk",
-		"t: ", "toggle clear view on token removal",
-		"w: ", "write amiibo data to token",
+		"t: ", "clear view on token removal",
 		"ESC: ", "double press to quit",
 	}
 

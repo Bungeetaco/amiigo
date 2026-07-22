@@ -1,10 +1,13 @@
 package main
 
 import (
+	"image"
+	"math/rand"
+	"time"
+
 	"github.com/gdamore/tcell/v2"
 	"github.com/qeesung/image2ascii/ascii"
 	"github.com/qeesung/image2ascii/convert"
-	"image"
 )
 
 type imageBox struct {
@@ -40,21 +43,17 @@ func newImageBox(s tcell.Screen, opts boxOpts, invert bool) *imageBox {
 	return i
 }
 
-// setImage will set the image on the box and update the box.
+// setImage will set the image on the box and update the box, revealing it with a matrix style
+// animation.
 func (i *imageBox) setImage(b image.Image) {
 	i.img = b
+	i.matrixReveal()
 	i.drawImage()
 }
 
-// drawImage will convert the active image to a printable ASCII string and send it to the content
-// channel for display.
-func (i *imageBox) drawImage() {
-	if i.img == nil {
-		return
-	}
-
-	// TODO: image rendering still has bugs, e.g.: try a Kirby amiibo in different terminal sizes.
-
+// charMatrix converts the active image to a character matrix fitting the viewport of the box.
+// It returns the matrix and the viewport width.
+func (i *imageBox) charMatrix() ([][]ascii.CharPixel, int) {
 	viewportWidth := i.width() - 4   // 4 = left and right borders + left and right margin
 	viewportHeight := i.height() - 2 // 2 = only top and bottom borders
 
@@ -70,8 +69,70 @@ func (i *imageBox) drawImage() {
 		i.iOpts.FixedHeight = viewportWidth * i.img.Bounds().Max.X / i.img.Bounds().Max.Y
 	}
 
+	return i.conv.Image2CharPixelMatrix(i.img, &i.iOpts), viewportWidth
+}
+
+// matrixReveal draws the active image with a matrix style animation: a wave of random green
+// glyphs rains down the box and resolves into the final image behind it.
+func (i *imageBox) matrixReveal() {
+	if i.img == nil {
+		return
+	}
+
+	lines, viewportWidth := i.charMatrix()
+	if len(lines) == 0 {
+		return
+	}
+
+	marginLeft, _, marginTop, marginBottom := i.bounds()
+	glyphs := []rune("abcdefghijklmnopqrstuvwxyz0123456789#$+*=%")
+	head := tcell.StyleDefault.Foreground(tcell.NewRGBColor(180, 255, 180)).Background(i.opts.bgColor).Attributes(tcell.AttrBold)
+	rain := tcell.StyleDefault.Foreground(tcell.NewRGBColor(0, 190, 60)).Background(i.opts.bgColor)
+
+	const trail = 3
+	for t := 0; t < len(lines)+trail+1; t++ {
+		for r := 0; r < len(lines) && r <= t; r++ {
+			y := marginTop + r
+			if y > marginBottom {
+				break
+			}
+			row := lines[r]
+			pad := (viewportWidth - len(row)) / 2
+
+			for c, p := range row {
+				x := marginLeft + pad + c
+				switch {
+				case r <= t-trail:
+					// Resolved: the final pixel.
+					style := tcell.StyleDefault.Foreground(tcell.NewRGBColor(int32(p.R), int32(p.G), int32(p.B))).Background(i.opts.bgColor).Attributes(i.attrs)
+					i.s.SetContent(x, y, rune(p.Char), nil, style)
+				case r == t:
+					// The bright head of the wave.
+					i.s.SetContent(x, y, glyphs[rand.Intn(len(glyphs))], nil, head)
+				default:
+					// The green trail.
+					i.s.SetContent(x, y, glyphs[rand.Intn(len(glyphs))], nil, rain)
+				}
+			}
+		}
+		i.s.Show()
+		time.Sleep(35 * time.Millisecond)
+	}
+}
+
+// drawImage will convert the active image to a printable ASCII string and send it to the content
+// channel for display.
+func (i *imageBox) drawImage() {
+	if i.img == nil {
+		return
+	}
+
+	// TODO: image rendering still has bugs, e.g.: try a Kirby amiibo in different terminal sizes.
+
+	lines, viewportWidth := i.charMatrix()
+
 	var buf []byte
-	for _, l := range i.conv.Image2CharPixelMatrix(i.img, &i.iOpts) {
+	for _, l := range lines {
 		// Add padding to center image (-2 for the borders).
 		for j := 0; j < (viewportWidth-len(l))/2; j++ {
 			buf = append(buf, encodeImageCell(ascii.CharPixel{Char: ' '}, i.attrs)...)

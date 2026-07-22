@@ -12,15 +12,16 @@ import (
 	"strings"
 )
 
-// showAmiiboInfo analyses the amiibo and updates the info, usage and image boxes.
-func showAmiiboInfo(amb *amb, log, ifo, usg chan<- []byte, img *imageBox, baseUrl string) {
+// showAmiiboInfo analyses the amiibo and updates the info, usage and image boxes. It returns the
+// amiibo name when it could be resolved through the API, an empty string otherwise.
+func showAmiiboInfo(amb *amb, log, ifo, usg chan<- []byte, img *imageBox, baseUrl string) string {
 	if amb == nil || amb.a == nil {
-		return
+		return ""
 	}
 
 	rawId := amb.a.ModelInfo().ID()
 	if zeroed(rawId) {
-		return
+		return ""
 	}
 	id := hex.EncodeToString(rawId)
 	log <- encodeStringCell("Got id: " + id)
@@ -41,7 +42,7 @@ func showAmiiboInfo(amb *amb, log, ifo, usg chan<- []byte, img *imageBox, baseUr
 	ai, err := api.GetAmiiboInfoById(id)
 	if err != nil {
 		log <- encodeStringCell("API get amiibo info: " + err.Error())
-		return
+		return ""
 	}
 	ifo <- formatAmiiboInfo(ai)
 
@@ -50,7 +51,7 @@ func showAmiiboInfo(amb *amb, log, ifo, usg chan<- []byte, img *imageBox, baseUr
 	i, err := getImage(ai.Image)
 	if err != nil {
 		log <- encodeStringCell("API get image: " + err.Error())
-		return
+		return ai.Name
 	}
 	img.setImage(i)
 
@@ -59,9 +60,11 @@ func showAmiiboInfo(amb *amb, log, ifo, usg chan<- []byte, img *imageBox, baseUr
 	cu, err := api.GetCharacterUsage(ai.Character)
 	if err != nil {
 		log <- encodeStringCell("Api get character usage: " + err.Error())
-		return
+		return ai.Name
 	}
 	usg <- formatAmiiboUsage(cu, id)
+
+	return ai.Name
 }
 
 // loadDump loads an amiibo dump from disk.

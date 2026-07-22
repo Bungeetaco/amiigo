@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"sync"
 	"time"
 
@@ -78,8 +79,28 @@ type ui struct {
 	write    chan []byte
 	amb      *amb
 	ambNfcId []byte
+	lastName string // Name of the last amiibo resolved through the API, for save suggestions.
 
 	sync.Mutex
+}
+
+// setLastName stores the name of the last resolved amiibo in a thread safe way.
+func (u *ui) setLastName(name string) {
+	u.Lock()
+	u.lastName = name
+	u.Unlock()
+}
+
+// suggestedFilename returns a save filename suggestion based on the last resolved amiibo name.
+func (u *ui) suggestedFilename() string {
+	u.Lock()
+	name := u.lastName
+	u.Unlock()
+
+	if name == "" {
+		return ""
+	}
+	return strings.ReplaceAll(name, "/", "-") + ".bin"
 }
 
 // draw draws the entire user interface.
@@ -324,9 +345,9 @@ func newUi(invertImage bool) *ui {
 	}
 
 	s, _ := initScreen()
-	info := newBox(s, boxOpts{title: "info", xPos: 1, yPos: logoHeight() + 1, width: 16, height: 70})
+	info := newBox(s, boxOpts{title: "info", xPos: 1, yPos: logoHeight() + 1, width: 16, height: 70, typewriter: true})
 	image := newImageBox(s, boxOpts{title: "image", xPos: -1, yPos: -1, width: 36, height: 70, bgColor: tcell.ColorBlack}, invertImage)
-	usage := newBox(s, boxOpts{title: "usage", key: 'u', xPos: -1, yPos: -1, width: 46, height: 70, scroll: true})
+	usage := newBox(s, boxOpts{title: "usage", key: 'u', xPos: -1, yPos: -1, width: 46, height: 70, scroll: true, typewriter: true})
 	// TODO: fix scrolling for boxes with the tail option!
 	logs := newBox(s, boxOpts{title: "logs", stripLeadingSpace: true, xPos: -1, yPos: -1, width: 52, height: 20, tail: true, history: true})
 	actions := newActionsBox(s, boxOpts{title: "actions", xPos: -1, yPos: -1, width: 46, height: 20}, actionsContent)
@@ -374,6 +395,7 @@ func newUi(invertImage bool) *ui {
 
 	u.elements = []element{info, image, usage, logs, actions, save, load, write, hex, nick, edit, fp, reset}
 	u.save = save
+	save.suggest = u.suggestedFilename
 	u.removal = newRemovalPrompt(s, logs.content)
 	u.actions = actions
 
@@ -424,7 +446,7 @@ func tui(conf *config) {
 					break
 				}
 				u.setAmiibo(am)
-				showAmiiboInfo(am, u.logBox.content, u.infoBox.content, u.usageBox.content, u.imageBox, conf.amiiboApiBaseUrl)
+				u.setLastName(showAmiiboInfo(am, u.logBox.content, u.infoBox.content, u.usageBox.content, u.imageBox, conf.amiiboApiBaseUrl))
 				u.draw(false)
 			case data := <-u.write:
 				writeToken(data, u.ambNfcId, ptl, u.logBox.content)

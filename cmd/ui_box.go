@@ -46,6 +46,7 @@ type boxOpts struct {
 	history           bool        // Set to true to preserve history, otherwise the buffer will always be replaced completely.
 	scroll            bool        // Allow scrolling using arrow keys. Will also display a scrollbar.
 	tail              bool        // The incoming content will be tailed when set to true.
+	typewriter        bool        // Reveal new content character by character, like an old terminal.
 	bgColor           tcell.Color // The background colour.
 	fixedContent      []string    // Display fixed content. No goroutine that listens for content will be running when set.
 	needAmiibo        bool        // Whether or not the box needs amiibo data to function
@@ -205,10 +206,69 @@ func (b *box) update() {
 		b.buffer.Write(c)
 
 		b.renderContent()
-		b.drawContent()
+		if b.opts.typewriter {
+			b.drawContentTyped()
+		} else {
+			b.drawContent()
+		}
 
 		b.Unlock()
 	}
+}
+
+// drawContentTyped draws the contents of the scrollback buffer like an old terminal would:
+// character by character. The total duration is capped, so large content types faster. Only
+// meant for non-tail boxes.
+func (b *box) drawContentTyped() {
+	marginLeft, marginRight, marginTop, marginBottom := b.bounds()
+
+	// Blank the content area so the reveal starts from an empty box.
+	for y := marginTop; y <= marginBottom; y++ {
+		for x := marginLeft; x <= marginRight; x++ {
+			b.s.SetContent(x, y, 0, nil, tcell.StyleDefault.Background(b.opts.bgColor))
+		}
+	}
+
+	total := 0
+	for _, l := range b.sbb {
+		total += len(l) / cellSize
+	}
+	if total == 0 {
+		b.drawContent()
+		return
+	}
+
+	// Aim for roughly a second in total with a sensible frame count.
+	steps := total
+	if steps > 300 {
+		steps = 300
+	}
+	batch := (total + steps - 1) / steps
+	delay := 1100 * time.Millisecond / time.Duration(steps)
+
+	hpos, vpos := marginLeft, marginTop
+	n := 0
+draw:
+	for line := b.sbbStart; line < len(b.sbb); line++ {
+		for i := 0; i < len(b.sbb[line]); i += cellSize {
+			if vpos > marginBottom {
+				break draw
+			}
+			c := decodeCell(b.sbb[line][i:])
+			b.s.SetContent(hpos, vpos, c.r, nil, c.s)
+			hpos++
+			n++
+			if n%batch == 0 {
+				b.s.Show()
+				time.Sleep(delay)
+			}
+		}
+		hpos = marginLeft
+		vpos++
+	}
+
+	b.drawScrollBar()
+	b.s.Show()
 }
 
 // renderContent renders the ringbuffer into separate lines to be displayed. This will allow easy

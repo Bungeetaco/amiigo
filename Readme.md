@@ -65,6 +65,10 @@ Expert mode cannot be set using the config file!
 `http://localhost:5000`. Reading, writing and decrypting dumps works fine
 without the API.
 
+When an amiibo is read, its details type out like on an old terminal and the
+character art resolves out of a matrix style rain of glyphs. The save dialog
+pre-types a filename based on the character name; edit or accept it as usual.
+
 ### Loading dumps: file browser
 Pressing `l` opens a file browser instead of a plain filename prompt:
 

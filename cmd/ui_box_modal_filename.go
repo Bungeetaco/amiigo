@@ -15,6 +15,7 @@ type filenameModal struct {
 	*modal
 	filename  string
 	prompt    string
+	suggest   func() string // When set, its return value is pre-typed into an empty input field.
 	inputXPos int
 	inputYPos int
 	submit    filenameSubmitHandler
@@ -78,6 +79,19 @@ func (fn *filenameModal) drawModalContent(x, y int) {
 		fn.drawFilenameBlank()
 	}
 	fn.inputXPos = x + 2
+
+	// Pre-type a suggestion which can be edited with backspace as usual.
+	if fn.filename == "" && fn.suggest != nil {
+		for _, char := range fn.suggest() {
+			if len(fn.filename) == fn.width()-6 {
+				break
+			}
+			fn.drawFilenameChar(char)
+			fn.inputXPos++
+			fn.filename += string(char)
+		}
+	}
+
 	fn.s.Show()
 }
 

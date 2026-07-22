@@ -70,6 +70,8 @@ type box struct {
 	minHeight  int           // The minimal height of the box.
 	content    chan []byte   // The channel that will receive the box content.
 	buffer     *ringBuffer   // The buffer holding the box content
+	badge      string        // Text displayed on the bottom right of the box border.
+	badgeStyle tcell.Style   // The style of the badge.
 	redraw     func()        // This is a callback to allow the box to do preparations BEFORE the UI completely redraws the box. This happens on initial drawing or screen resize, not on regular content updates.
 	active     bool          // Indicates if this box is activated for user interaction or not.
 	done       chan struct{} // A channel that will be closed when the box is done
@@ -492,6 +494,37 @@ func (b *box) drawBorders(x, y int, animate bool) {
 			b.s.SetContent(b.opts.xPos+hpos, b.opts.yPos+vpos, r, nil, b.getStyleForRune(r))
 		}
 	}
+
+	b.drawBadge()
+}
+
+// drawBadge paints the badge over the bottom border, right aligned. Must be called from within
+// the locked draw path.
+func (b *box) drawBadge() {
+	if b.badge == "" {
+		return
+	}
+
+	runes := []rune(b.badge)
+	y := b.opts.yPos + b.height() - 1
+	x := b.opts.xPos + b.width() - 2 - len(runes)
+	if x < b.opts.xPos+1 {
+		return
+	}
+	for i, r := range runes {
+		b.s.SetContent(x+i, y, r, nil, b.badgeStyle)
+	}
+}
+
+// setBadge sets the badge displayed on the bottom right of the box border and repaints the
+// border to display it.
+func (b *box) setBadge(text string, style tcell.Style) {
+	b.Lock()
+	b.badge = text
+	b.badgeStyle = style
+	b.drawBorders(b.opts.xPos, b.opts.yPos, false)
+	b.Unlock()
+	b.s.Show()
 }
 
 // render renders a box into a two-dimensional rune slice. This intermediary step will allow us

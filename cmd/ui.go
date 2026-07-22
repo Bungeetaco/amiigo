@@ -198,9 +198,10 @@ func (u *ui) interactFor(b element, am *amb) bool {
 	}
 }
 
-// clearView clears the active amiibo and all boxes displaying its data, keeping the amiibo in
-// memory as a backup restorable with the b action. The boxes clear with the reverse of the
-// reveal animations, running in parallel.
+// clearView clears the active amiibo, keeping it in memory as a backup restorable with the b
+// action. The visual clearing is requested through the amiibo channel, so it runs on the
+// listener goroutine strictly after any reveal animations still in flight: a token removed while
+// its data is being revealed clears gracefully instead of the two animations fighting.
 func (u *ui) clearView() {
 	u.Lock()
 	if u.amb != nil {
@@ -210,6 +211,12 @@ func (u *ui) clearView() {
 	u.ambNfcId = nil
 	u.Unlock()
 
+	amiiboChan <- &amb{clear: true}
+}
+
+// runClearAnimations clears the boxes with the reverse of the reveal animations, running in
+// parallel. It is executed on the amiibo listener goroutine, see clearView.
+func (u *ui) runClearAnimations() {
 	var wg sync.WaitGroup
 	wg.Add(3)
 	go func() { defer wg.Done(); u.infoBox.clearContentTyped() }()
@@ -218,6 +225,15 @@ func (u *ui) clearView() {
 	wg.Wait()
 
 	u.logBox.content <- encodeStringCell("Amiibo view cleared, b restores it from memory")
+}
+
+// setTokenBadge updates the token presence indicator on the logs box border.
+func (u *ui) setTokenBadge(present bool) {
+	if present {
+		u.logBox.setBadge("═‡ ● token on portal ‡═", tcell.StyleDefault.Background(backColour).Foreground(tcell.ColorGreen).Attributes(tcell.AttrBold))
+		return
+	}
+	u.logBox.setBadge("═‡ ○ no token ‡═", tcell.StyleDefault.Background(backColour).Foreground(fontColour).Attributes(tcell.AttrDim))
 }
 
 // restoreBackup reloads the last cleared amiibo as the active one.
@@ -277,12 +293,14 @@ func (u *ui) handleTokenRemoved() {
 	// listener may have drawn underneath the prompt in the meantime.
 	finish := func(clear bool) {
 		u.removal.deactivate()
+		// Repair whatever the background amiibo listener may have drawn underneath the prompt
+		// before requesting the clearing animations, which serialize behind in flight reveals.
+		u.sync()
 		if u.amiibo() != am {
 			u.logBox.content <- encodeStringCell("New token placed, keeping amiibo view")
 		} else if clear {
 			u.clearView()
 		}
-		u.sync()
 	}
 
 	for {
@@ -315,6 +333,7 @@ func (u *ui) handleTokenRemoved() {
 				// Save the amiibo the prompt was shown for, even when a new token has replaced
 				// the view in the meantime.
 				saved := u.interactFor(u.save, am)
+				u.sync()
 				switch {
 				case u.amiibo() != am:
 					u.logBox.content <- encodeStringCell("New token placed, keeping amiibo view")
@@ -324,7 +343,6 @@ func (u *ui) handleTokenRemoved() {
 					// The save was aborted: keep the view so the data is not lost.
 					u.logBox.content <- encodeStringCell("Save aborted, keeping amiibo view")
 				}
-				u.sync()
 				return
 			}
 		}
@@ -457,6 +475,7 @@ func tui(conf *config) {
 		for {
 			select {
 			case <-ptl.evt:
+				u.setTokenBadge(false)
 				ptl.log <- encodeStringCell("Reinitializing NFC portal")
 				go ptl.listen(conf)
 			case <-conf.quit:
@@ -470,14 +489,22 @@ func tui(conf *config) {
 		for {
 			select {
 			case am := <-amiiboChan:
+				if am.clear {
+					u.runClearAnimations()
+					break
+				}
 				if am.nfc && am.a == nil {
 					// An amb struct with nfc set to true and a nil amiibo signals a token removal.
+					u.setTokenBadge(false)
 					u.resetAmbNfcId()
 					if conf.ui.clearOnRemove {
 						// Let the main event loop show the removal prompt.
 						u.s.PostEvent(newEventTokenRemoved(false))
 					}
 					break
+				}
+				if am.nfc {
+					u.setTokenBadge(true)
 				}
 				u.setAmiibo(am)
 				u.setLastName(showAmiiboInfo(am, u.logBox.content, u.infoBox.content, u.usageBox.content, u.imageBox, conf.amiiboApiBaseUrl))
@@ -491,6 +518,7 @@ func tui(conf *config) {
 	}()
 
 	u.show()
+	u.setTokenBadge(false)
 
 	if conf.retailKey == nil {
 		u.logBox.content <- encodeStringCellWarning("No retail key loaded: cannot decrypt nor detect decrypted amiibo!")

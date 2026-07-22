@@ -22,7 +22,7 @@ func newRemovalPrompt(s tcell.Screen, log chan<- []byte) *removalPrompt {
 	r := &removalPrompt{remaining: int(removalTimeout / time.Second)}
 	r.modal = newModal(
 		s,
-		boxOpts{title: "token removed", xPos: -1, yPos: -1, width: 66, height: 10, typ: boxTypeCharacter, needAmiibo: true},
+		boxOpts{title: "token removed", xPos: -1, yPos: -1, width: 66, height: 11, typ: boxTypeCharacter, needAmiibo: true},
 		nil,
 		r.draw,
 		r.resetState,
@@ -38,6 +38,7 @@ func (r *removalPrompt) draw(x, y int) {
 		"The token was removed from the NFC portal.",
 		"",
 		"s: save the amiibo to disk before clearing the view",
+		"k: keep the amiibo loaded",
 		"c or ESC: clear the view right away",
 	}
 
@@ -61,7 +62,7 @@ func (r *removalPrompt) drawCountdown() {
 
 	line := fmt.Sprintf("The view clears automatically in %d seconds.   ", r.remaining)
 	for j, char := range line {
-		r.s.SetContent(x+2+j, y+7, char, nil, style)
+		r.s.SetContent(x+2+j, y+8, char, nil, style)
 	}
 }
 

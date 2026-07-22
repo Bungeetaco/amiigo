@@ -79,6 +79,7 @@ type ui struct {
 	write    chan []byte
 	amb      *amb
 	ambNfcId []byte
+	backup   *amb   // The last amiibo cleared from the view, restorable with the b action.
 	lastName string // Name of the last amiibo resolved through the API, for save suggestions.
 
 	sync.Mutex
@@ -192,17 +193,40 @@ func (u *ui) interactFor(b element, am *amb) bool {
 	}
 }
 
-// clearView clears the active amiibo and all boxes displaying its data.
+// clearView clears the active amiibo and all boxes displaying its data, keeping the amiibo in
+// memory as a backup restorable with the b action. The boxes clear with the reverse of the
+// reveal animations, running in parallel.
 func (u *ui) clearView() {
 	u.Lock()
+	if u.amb != nil {
+		u.backup = u.amb
+	}
 	u.amb = nil
 	u.ambNfcId = nil
 	u.Unlock()
 
-	u.infoBox.clearContent()
-	u.usageBox.clearContent()
-	u.imageBox.clearImage()
-	u.logBox.content <- encodeStringCell("Amiibo view cleared")
+	var wg sync.WaitGroup
+	wg.Add(3)
+	go func() { defer wg.Done(); u.infoBox.clearContentTyped() }()
+	go func() { defer wg.Done(); u.usageBox.clearContentTyped() }()
+	go func() { defer wg.Done(); u.imageBox.dissolveImage() }()
+	wg.Wait()
+
+	u.logBox.content <- encodeStringCell("Amiibo view cleared, b restores it from memory")
+}
+
+// restoreBackup reloads the last cleared amiibo as the active one.
+func (u *ui) restoreBackup() {
+	u.Lock()
+	bk := u.backup
+	u.Unlock()
+
+	if bk == nil {
+		u.logBox.content <- encodeStringCell("No amiibo in the backup memory")
+		return
+	}
+	u.logBox.content <- encodeStringCell("Restoring amiibo from the backup memory")
+	amiiboChan <- bk
 }
 
 // handleTokenRemoved shows the token removal prompt and clears the amiibo view unless the user
@@ -277,6 +301,10 @@ func (u *ui) handleTokenRemoved() {
 			case e.Key() == tcell.KeyEscape || e.Rune() == 'c' || e.Rune() == 'C':
 				finish(true)
 				return
+			case e.Rune() == 'k' || e.Rune() == 'K':
+				u.logBox.content <- encodeStringCell("Keeping amiibo loaded")
+				finish(false)
+				return
 			case e.Rune() == 's' || e.Rune() == 'S':
 				u.removal.deactivate()
 				// Save the amiibo the prompt was shown for, even when a new token has replaced
@@ -336,6 +364,7 @@ func newUi(invertImage bool) *ui {
 		"d: ", "decrypt amiibo dump",
 		"h: ", "hex view of (decrypted) dump",
 		"i: ", "invert image view",
+		"b: ", "restore last cleared amiibo",
 		"n: ", "set amiibo nickname",
 		"e: ", "edit gameplay (app) data",
 		"f: ", "edit SSBU figure player",
@@ -502,6 +531,8 @@ func tui(conf *config) {
 			case e.Rune() == 'I' || e.Rune() == 'i':
 				u.logBox.content <- encodeStringCell("Toggle image invert")
 				u.imageBox.invertImage()
+			case e.Rune() == 'B' || e.Rune() == 'b':
+				u.restoreBackup()
 			case e.Key() == tcell.KeyLeft:
 				u.actions.flip(-1)
 			case e.Key() == tcell.KeyRight:

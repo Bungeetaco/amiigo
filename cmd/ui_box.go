@@ -374,6 +374,54 @@ draw:
 	b.s.Show()
 }
 
+// clearContentTyped removes the content like an old terminal deleting it: character by character
+// from the end. It finishes with a full clearContent.
+func (b *box) clearContentTyped() {
+	// Collect the screen positions the current content occupies, walking the scrollback buffer
+	// exactly like drawContent does.
+	b.Lock()
+	marginLeft, _, marginTop, marginBottom := b.bounds()
+	type pos struct{ x, y int }
+	var cells []pos
+	hpos, vpos := marginLeft, marginTop
+collect:
+	for line := b.sbbStart; line < len(b.sbb); line++ {
+		for i := 0; i < len(b.sbb[line]); i += cellSize {
+			if vpos > marginBottom {
+				break collect
+			}
+			cells = append(cells, pos{hpos, vpos})
+			hpos++
+		}
+		hpos = marginLeft
+		vpos++
+	}
+	b.Unlock()
+
+	if len(cells) == 0 {
+		b.clearContent()
+		return
+	}
+
+	steps := len(cells)
+	if steps > 300 {
+		steps = 300
+	}
+	batch := (len(cells) + steps - 1) / steps
+	delay := 900 * time.Millisecond / time.Duration(steps)
+
+	style := tcell.StyleDefault.Background(b.opts.bgColor)
+	for n := len(cells) - 1; n >= 0; n-- {
+		b.s.SetContent(cells[n].x, cells[n].y, 0, nil, style)
+		if (len(cells)-n)%batch == 0 {
+			b.s.Show()
+			time.Sleep(delay)
+		}
+	}
+
+	b.clearContent()
+}
+
 // clearContent empties the internal buffers of the box and blanks its content area on screen.
 func (b *box) clearContent() {
 	b.Lock()

@@ -72,20 +72,14 @@ func (i *imageBox) charMatrix() ([][]ascii.CharPixel, int) {
 	return i.conv.Image2CharPixelMatrix(i.img, &i.iOpts), viewportWidth
 }
 
-// matrixReveal draws the active image with a matrix style animation: a wave of random green
-// glyphs rains down the box and resolves into the final image behind it.
-func (i *imageBox) matrixReveal() {
-	if i.img == nil {
-		return
-	}
+// matrixGlyphs are the characters the matrix rain animation is made of.
+var matrixGlyphs = []rune("abcdefghijklmnopqrstuvwxyz0123456789#$+*=%")
 
-	lines, viewportWidth := i.charMatrix()
-	if len(lines) == 0 {
-		return
-	}
-
+// matrixWave runs a matrix rain wave down the char matrix: a bright head of random green glyphs
+// followed by a green trail, with the cells behind the wave rendered by the given settle
+// function.
+func (i *imageBox) matrixWave(lines [][]ascii.CharPixel, viewportWidth int, settle func(x, y int, p ascii.CharPixel)) {
 	marginLeft, _, marginTop, marginBottom := i.bounds()
-	glyphs := []rune("abcdefghijklmnopqrstuvwxyz0123456789#$+*=%")
 	head := tcell.StyleDefault.Foreground(tcell.NewRGBColor(180, 255, 180)).Background(i.opts.bgColor).Attributes(tcell.AttrBold)
 	rain := tcell.StyleDefault.Foreground(tcell.NewRGBColor(0, 190, 60)).Background(i.opts.bgColor)
 
@@ -103,21 +97,54 @@ func (i *imageBox) matrixReveal() {
 				x := marginLeft + pad + c
 				switch {
 				case r <= t-trail:
-					// Resolved: the final pixel.
-					style := tcell.StyleDefault.Foreground(tcell.NewRGBColor(int32(p.R), int32(p.G), int32(p.B))).Background(i.opts.bgColor).Attributes(i.attrs)
-					i.s.SetContent(x, y, rune(p.Char), nil, style)
+					settle(x, y, p)
 				case r == t:
-					// The bright head of the wave.
-					i.s.SetContent(x, y, glyphs[rand.Intn(len(glyphs))], nil, head)
+					i.s.SetContent(x, y, matrixGlyphs[rand.Intn(len(matrixGlyphs))], nil, head)
 				default:
-					// The green trail.
-					i.s.SetContent(x, y, glyphs[rand.Intn(len(glyphs))], nil, rain)
+					i.s.SetContent(x, y, matrixGlyphs[rand.Intn(len(matrixGlyphs))], nil, rain)
 				}
 			}
 		}
 		i.s.Show()
 		time.Sleep(35 * time.Millisecond)
 	}
+}
+
+// matrixReveal draws the active image with a matrix style animation: the wave resolves into the
+// final image behind it.
+func (i *imageBox) matrixReveal() {
+	if i.img == nil {
+		return
+	}
+	lines, viewportWidth := i.charMatrix()
+	if len(lines) == 0 {
+		return
+	}
+
+	i.matrixWave(lines, viewportWidth, func(x, y int, p ascii.CharPixel) {
+		style := tcell.StyleDefault.Foreground(tcell.NewRGBColor(int32(p.R), int32(p.G), int32(p.B))).Background(i.opts.bgColor).Attributes(i.attrs)
+		i.s.SetContent(x, y, rune(p.Char), nil, style)
+	})
+}
+
+// dissolveImage clears the active image with the reverse matrix style animation: the wave eats
+// the image and leaves a blank box behind it.
+func (i *imageBox) dissolveImage() {
+	if i.img == nil {
+		i.clearImage()
+		return
+	}
+	lines, viewportWidth := i.charMatrix()
+	if len(lines) == 0 {
+		i.clearImage()
+		return
+	}
+
+	blank := tcell.StyleDefault.Background(i.opts.bgColor)
+	i.matrixWave(lines, viewportWidth, func(x, y int, _ ascii.CharPixel) {
+		i.s.SetContent(x, y, 0, nil, blank)
+	})
+	i.clearImage()
 }
 
 // drawImage will convert the active image to a printable ASCII string and send it to the content

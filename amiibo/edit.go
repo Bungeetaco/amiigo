@@ -30,6 +30,9 @@ const appDataInitialized = 1 << 5
 // ssbuAppID is the application ID Super Smash Bros. Ultimate stores on an amiibo.
 var ssbuAppID = []byte{0x34, 0xf8, 0x02, 0x00}
 
+// ssbuTitleID is the title ID of Super Smash Bros. Ultimate.
+var ssbuTitleID = []byte{0x01, 0x00, 0x6a, 0x80, 0x30, 0x16, 0xe0, 0x00}
+
 // SetNickname writes a new nickname to a DECRYPTED amiibo. The name is stored as UTF-16 big
 // endian in a 20 byte field, so a maximum of 10 basic characters.
 // Note that the settings CRC is deliberately not touched: it is calculated with a console unique
@@ -102,6 +105,39 @@ func ClearAppData(a Amiidump) {
 
 	ri := a.RegisterInfoRaw()
 	ri[riFlags] &^= appDataInitialized
+	a.SetRegisterInfo(ri)
+}
+
+// FixAppDataChecksum recalculates the checksum SSBU keeps inside the application data of a
+// DECRYPTED amiibo. It returns true when the amiibo holds SSBU data and a checksum was written,
+// false otherwise.
+func FixAppDataChecksum(a Amiidump) bool {
+	s := a.SettingsRaw()
+	if !bytes.Equal(s[setAppID:setAppID+4], ssbuAppID) {
+		return false
+	}
+	fixSSBUChecksum(s)
+	a.SetSettings(s)
+
+	return true
+}
+
+// InitializeSSBU registers Super Smash Bros. Ultimate as the owning game of a DECRYPTED amiibo:
+// the SSBU title and application IDs are written, the application data is zeroed, its checksum
+// is calculated and the 'appdata initialized' flag is set. This mirrors what SSBU itself does
+// when an amiibo is used as a figure player for the first time.
+func InitializeSSBU(a Amiidump) {
+	s := a.SettingsRaw()
+	copy(s[setTitleID:setTitleID+8], ssbuTitleID)
+	copy(s[setAppID:setAppID+4], ssbuAppID)
+	for i := setAppData; i < setAppData+AppDataSize; i++ {
+		s[i] = 0
+	}
+	fixSSBUChecksum(s)
+	a.SetSettings(s)
+
+	ri := a.RegisterInfoRaw()
+	ri[riFlags] |= appDataInitialized
 	a.SetRegisterInfo(ri)
 }
 

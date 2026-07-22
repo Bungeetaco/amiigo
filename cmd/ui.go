@@ -152,6 +152,7 @@ func newUi(invertImage bool) *ui {
 	actionsContent := []string{
 		"d: ", "decrypt amiibo dump",
 		"e: ", "edit gameplay (app) data",
+		"f: ", "edit SSBU figure player",
 		"h: ", "hex view of (decrypted) amiibo dump",
 		"i: ", "invert image view",
 		"l: ", "load dump from disk",
@@ -201,6 +202,7 @@ func newUi(invertImage bool) *ui {
 		setNickname,
 	)
 	edit := newHexEditModal(s, boxOpts{title: "edit gameplay data", key: 'e', xPos: -1, yPos: -1, width: 78, height: 20, typ: boxTypeCharacter, needAmiibo: true}, logs.content, applyAppData)
+	fp := newFPEditModal(s, boxOpts{title: "edit SSBU figure player", key: 'f', xPos: -1, yPos: -1, width: 80, height: 32, typ: boxTypeCharacter, needAmiibo: true}, logs.content, applyFPEdit)
 	reset := newOptionsModal(
 		s,
 		boxOpts{title: "reset gameplay data", key: 'r', xPos: -1, yPos: -1, width: 80, height: 9, typ: boxTypeCharacter, needAmiibo: true},
@@ -210,7 +212,7 @@ func newUi(invertImage bool) *ui {
 		u.write,
 	)
 
-	u.elements = []element{info, image, usage, logs, actions, save, load, write, hex, nick, edit, reset}
+	u.elements = []element{info, image, usage, logs, actions, save, load, write, hex, nick, edit, fp, reset}
 
 	return u
 }

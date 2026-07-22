@@ -104,6 +104,19 @@ write action.
   title ID and clears the appdata flag, so games treat the amiibo as brand
   new. Handy for retraining SSBU figure players. The owner and nickname are
   kept.
+- `f`: structured Super Smash Bros. Ultimate figure player editor. Shows all
+  documented FP parameters as a navigable form: abilities, learning, spirit
+  type, attack and defense stats, level experience and the full set of
+  behaviour percentages. Use the arrow keys to select, `←`/`→`, `[`/`]` and
+  `{`/`}` to change values in steps of 1, 10 and 1000, `z`/`x` for minimum
+  and maximum, ENTER to apply. Changed entries are highlighted and the
+  selected parameter's description is shown at the bottom. When the loaded
+  amiibo holds no SSBU data yet it can be initialized as a brand new figure
+  player from within the editor, exactly like the game does on first use.
+  The parameter definitions come from the MIT licensed
+  [smash-amiibo-editor](https://github.com/jozz024/smash-amiibo-editor)
+  project (see `cmd/resources/`), and the SSBU appdata checksum is
+  recalculated automatically on apply.
 
 Two things worth knowing. The settings CRC in the register info is calculated
 with a console unique hash, so it cannot be computed off-console; consoles

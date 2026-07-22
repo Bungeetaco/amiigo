@@ -70,6 +70,28 @@ func applyAppData(data []byte, am *amb, log chan<- []byte) bool {
 	})
 }
 
+// applyFPEdit replaces the register info and settings of the active amiibo with the state built
+// by the figure player editor, given in the amiitool (internal) layout, and refreshes the SSBU
+// application data checksum.
+func applyFPEdit(internal []byte, am *amb, log chan<- []byte) bool {
+	return modifyAmiibo(am, log, "figure player edit", func(a amiibo.Amiidump) error {
+		t, err := amiibo.NewAmiitool(internal, nil)
+		if err != nil {
+			return err
+		}
+
+		var src amiibo.Amiidump = t
+		if a.Type() == amiibo.TypeAmiibo {
+			src = amiibo.AmiitoolToAmiibo(t)
+		}
+		a.SetRegisterInfo(src.RegisterInfoRaw())
+		a.SetSettings(src.SettingsRaw())
+		amiibo.FixAppDataChecksum(a)
+
+		return nil
+	})
+}
+
 // resetAppData wipes all gameplay data from the active amiibo after confirmation. It is an
 // optionsSubmitHandler, the return value ends up in the token write channel which ignores nil.
 func resetAppData(_ int, am *amb, log chan<- []byte) []byte {

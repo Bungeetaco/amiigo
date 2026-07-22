@@ -86,6 +86,7 @@ type ui struct {
 	ambNfcId []byte
 	backup   *amb   // The last amiibo cleared from the view, restorable with the b action.
 	lastName string // Name of the last amiibo resolved through the API, for save suggestions.
+	tokenOn  bool   // Whether a token is currently present on the NFC portal.
 
 	sync.Mutex
 }
@@ -128,8 +129,15 @@ func (u *ui) show() {
 	u.s.Show()
 }
 
-// sync redraws the full screen on resize.
+// sync redraws the full screen on resize. It first waits for running box animations to end:
+// clearing the screen and then blocking on an animating box would leave the boxes without
+// borders until the animation finishes.
 func (u *ui) sync() {
+	for _, b := range []*box{u.infoBox, u.usageBox, u.imageBox.box, u.logBox} {
+		b.Lock()
+		b.Unlock() //lint:ignore SA2001 only used as an animation barrier
+	}
+
 	u.s.Clear()
 	u.draw(false)
 	u.s.Sync() // Is this still needed after the two preceding lines?
@@ -225,10 +233,29 @@ func (u *ui) runClearAnimations() {
 	wg.Wait()
 
 	u.logBox.content <- encodeStringCell("Amiibo view cleared, b restores it from memory")
+	// Leave a pristine screen: this also repairs any leftovers of the removal prompt.
+	u.sync()
 }
 
-// setTokenBadge updates the token presence indicator on the logs box border.
+// queueRedraw requests a full screen redraw through the amiibo channel, so it runs on the
+// listener goroutine strictly after any reveal animation still in flight instead of wiping the
+// screen underneath one. The send happens on a separate goroutine to not block the caller.
+func (u *ui) queueRedraw() {
+	go func() { amiiboChan <- &amb{redraw: true} }()
+}
+
+// tokenPresent returns whether a token is currently on the NFC portal in a thread safe way.
+func (u *ui) tokenPresent() bool {
+	u.Lock()
+	defer u.Unlock()
+	return u.tokenOn
+}
+
+// setTokenBadge updates the token presence state and its indicator on the logs box border.
 func (u *ui) setTokenBadge(present bool) {
+	u.Lock()
+	u.tokenOn = present
+	u.Unlock()
 	if present {
 		u.logBox.setBadge("═‡ ● token on portal ‡═", tcell.StyleDefault.Background(backColour).Foreground(tcell.ColorGreen).Attributes(tcell.AttrBold))
 		return
@@ -256,6 +283,11 @@ func (u *ui) restoreBackup() {
 func (u *ui) handleTokenRemoved() {
 	am := u.amiibo()
 	if !conf.ui.clearOnRemove || am == nil || am.a == nil {
+		return
+	}
+	if u.tokenPresent() {
+		// The token was placed back (or replaced) before the prompt could open: nothing to
+		// clear, the view already shows a present token.
 		return
 	}
 
@@ -293,13 +325,16 @@ func (u *ui) handleTokenRemoved() {
 	// listener may have drawn underneath the prompt in the meantime.
 	finish := func(clear bool) {
 		u.removal.deactivate()
-		// Repair whatever the background amiibo listener may have drawn underneath the prompt
-		// before requesting the clearing animations, which serialize behind in flight reveals.
-		u.sync()
 		if u.amiibo() != am {
 			u.logBox.content <- encodeStringCell("New token placed, keeping amiibo view")
+			clear = false
 		} else if clear {
 			u.clearView()
+		}
+		if !clear {
+			// Repair whatever the listener may have drawn underneath the prompt. Queued behind
+			// in flight reveals; the clear path repaints by itself when its animations end.
+			u.queueRedraw()
 		}
 	}
 
@@ -333,15 +368,16 @@ func (u *ui) handleTokenRemoved() {
 				// Save the amiibo the prompt was shown for, even when a new token has replaced
 				// the view in the meantime.
 				saved := u.interactFor(u.save, am)
-				u.sync()
 				switch {
 				case u.amiibo() != am:
 					u.logBox.content <- encodeStringCell("New token placed, keeping amiibo view")
+					u.queueRedraw()
 				case saved:
 					u.clearView()
 				default:
 					// The save was aborted: keep the view so the data is not lost.
 					u.logBox.content <- encodeStringCell("Save aborted, keeping amiibo view")
+					u.queueRedraw()
 				}
 				return
 			}
@@ -489,6 +525,10 @@ func tui(conf *config) {
 		for {
 			select {
 			case am := <-amiiboChan:
+				if am.redraw {
+					u.sync()
+					break
+				}
 				if am.clear {
 					u.runClearAnimations()
 					break

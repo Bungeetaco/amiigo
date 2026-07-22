@@ -7,7 +7,8 @@ type amb struct {
 	a     amiibo.Amiidump // The actual amiibo data.
 	dec   bool            // True when the amiibo is decrypted.
 	nfc   bool            // True when the amiibo was received from an NFC portal.
-	clear bool            // True to request the view clearing animations, see ui.clearView.
+	clear  bool            // True to request the view clearing animations, see ui.clearView.
+	redraw bool            // True to request a full screen redraw, see ui.queueRedraw.
 }
 
 // newAmiibo creates a new amb struct.

@@ -316,12 +316,14 @@ func newUi(invertImage bool) *ui {
 	}
 
 	s, _ := initScreen()
-	info := newBox(s, boxOpts{title: "info", xPos: 1, yPos: logoHeight() + 1, width: 16, height: 70})
-	image := newImageBox(s, boxOpts{title: "image", xPos: -1, yPos: -1, width: 36, height: 70, bgColor: tcell.ColorBlack}, invertImage)
-	usage := newBox(s, boxOpts{title: "usage", key: 'u', xPos: -1, yPos: -1, width: 46, height: 70, scroll: true})
+	info := newBox(s, boxOpts{title: "info", xPos: 1, yPos: logoHeight() + 1, width: 16, height: 58})
+	image := newImageBox(s, boxOpts{title: "image", xPos: -1, yPos: -1, width: 36, height: 58, bgColor: tcell.ColorBlack}, invertImage)
+	usage := newBox(s, boxOpts{title: "usage", key: 'u', xPos: -1, yPos: -1, width: 46, height: 58, scroll: true})
 	// TODO: fix scrolling for boxes with the tail option!
 	logs := newBox(s, boxOpts{title: "logs", stripLeadingSpace: true, xPos: -1, yPos: -1, width: 52, height: 20, tail: true, history: true})
-	actions := newBox(s, boxOpts{title: "actions", xPos: -1, yPos: -1, width: 46, height: 20, fixedContent: actionsContent})
+	// The actions box has a fixed character height so every action stays visible: a box does not
+	// grow with its content and silently drops lines that do not fit.
+	actions := newBox(s, boxOpts{title: "actions", xPos: -1, yPos: -1, width: 46, height: len(actionsContent)/2 + 3, typ: boxTypeCharacter, fixedContent: actionsContent})
 
 	u := &ui{
 		s:        s,

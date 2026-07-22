@@ -37,10 +37,31 @@ type ssbuRegion struct {
 	bitStart    int // Bit offset in the start byte, 0 being the most significant bit.
 	length      int // Length in bits.
 	options     []ssbuOption
+	legalMin    *int64 // Overrides the storage minimum with the minimum legal in game.
+	legalMax    *int64 // Overrides the storage maximum with the maximum legal in game.
 }
 
 // ssbuRegions holds all editable region definitions, parsed once on first use.
 var ssbuRegions []ssbuRegion
+
+// ssbuAbilityCost holds the support slot cost per ability value. A figure player has
+// ssbuAbilitySlots support slots in total and every equipped ability occupies 1 to 3 of them.
+var ssbuAbilityCost map[uint64]int64
+
+// ssbuAbilitySlots is the total number of support slots of a figure player.
+const ssbuAbilitySlots = 3
+
+// Stat budgets: the total of the attack and defense stats a figure player can legally reach is
+// 5000 with no abilities equipped and 4200 with all three slots filled. The exact budget for one
+// or two occupied slots is not reliably documented, so the conservative 4200 is used as soon as
+// any ability is equipped: that is always legal.
+const (
+	ssbuStatBudgetFree      = 5000
+	ssbuStatBudgetAbilities = 4200
+)
+
+// ssbuLevelExpMax is the experience at level 50, the level cap of a figure player.
+const ssbuLevelExpMax = 3912
 
 // loadSSBURegions parses the embedded region and ability definitions. Region types that are
 // covered by other amiigo features or are display only derivations are skipped: text (see the
@@ -51,9 +72,12 @@ func loadSSBURegions() error {
 	}
 
 	abilities := []ssbuOption{{name: "None", value: 0}}
+	ssbuAbilityCost = map[uint64]int64{0: 0}
 	s := bufio.NewScanner(bytes.NewReader(ssbuAbilitiesTxt))
 	for i := uint64(1); s.Scan(); i++ {
-		abilities = append(abilities, ssbuOption{name: strings.TrimSpace(s.Text()), value: i})
+		name := strings.TrimSpace(s.Text())
+		abilities = append(abilities, ssbuOption{name: name, value: i})
+		ssbuAbilityCost[i] = abilityCost(name)
 	}
 
 	var raw struct {
@@ -102,10 +126,51 @@ func loadSSBURegions() error {
 			sort.Slice(reg.options, func(i, j int) bool { return reg.options[i].value < reg.options[j].value })
 		}
 
+		// Ranges legal in game, narrower than what the fields can store.
+		switch reg.name {
+		case "Level Experience":
+			reg.legalMin, reg.legalMax = i64(0), i64(ssbuLevelExpMax)
+		case "Attack Stat", "Defense Stat":
+			reg.legalMin, reg.legalMax = i64(0), i64(ssbuStatBudgetFree)
+		}
+
 		ssbuRegions = append(ssbuRegions, reg)
 	}
 
 	return nil
+}
+
+// i64 returns a pointer to the given value.
+func i64(v int64) *int64 {
+	return &v
+}
+
+// ssbuRegionByName returns the parsed region with the given name, or nil when not found.
+func ssbuRegionByName(name string) *ssbuRegion {
+	for i := range ssbuRegions {
+		if ssbuRegions[i].name == name {
+			return &ssbuRegions[i]
+		}
+	}
+	return nil
+}
+
+// abilityCost extracts the support slot cost from an ability name, which carries a suffix like
+// "(L 1)" or "(U 3)". An unknown cost ("?") is treated as the maximum to stay conservative.
+func abilityCost(name string) int64 {
+	open := strings.LastIndex(name, "(")
+	if open == -1 {
+		return ssbuAbilitySlots
+	}
+	f := strings.Fields(strings.Trim(name[open:], "()"))
+	if len(f) != 2 {
+		return ssbuAbilitySlots
+	}
+	c, err := strconv.ParseInt(f[1], 10, 8)
+	if err != nil || c < 1 || c > ssbuAbilitySlots {
+		return ssbuAbilitySlots
+	}
+	return c
 }
 
 // titleCase uppercases the first letter of every space separated word.
@@ -225,15 +290,27 @@ func (r *ssbuRegion) setRawValue(d []byte, v int64) {
 	}
 }
 
-// bounds returns the minimum and maximum raw value for the region.
+// bounds returns the minimum and maximum raw value for the region. When the region has known
+// legal limits narrower than what the field can store, those are returned instead.
 func (r *ssbuRegion) bounds() (int64, int64) {
+	var min, max int64
 	switch r.typ {
 	case "signed":
-		return -(1 << (r.length - 1)), 1<<(r.length-1) - 1
+		min, max = -(1 << (r.length - 1)), 1<<(r.length-1)-1
 	case "enum", "ability":
-		return 0, int64(r.options[len(r.options)-1].value)
+		min, max = 0, int64(r.options[len(r.options)-1].value)
+	default:
+		min, max = 0, 1<<r.length-1
 	}
-	return 0, 1<<r.length - 1
+
+	if r.legalMin != nil && *r.legalMin > min {
+		min = *r.legalMin
+	}
+	if r.legalMax != nil && *r.legalMax < max {
+		max = *r.legalMax
+	}
+
+	return min, max
 }
 
 // display formats the current value of the region for the UI.

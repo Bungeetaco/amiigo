@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+
 	"github.com/gdamore/tcell/v2"
 	"github.com/malc0mn/amiigo/amiibo"
 )
@@ -135,13 +137,20 @@ func (f *fpEditModal) handleInput(e *tcell.EventKey) {
 		r := &ssbuRegions[f.sel]
 		min, _ := r.bounds()
 		r.setRawValue(f.internal, min)
+		f.enforceStats(r)
 		f.redrawContent()
 	case e.Rune() == 'x' || e.Rune() == 'X':
 		r := &ssbuRegions[f.sel]
-		_, max := r.bounds()
-		r.setRawValue(f.internal, max)
+		if r.typ == "ability" {
+			f.maxAbility(r)
+		} else {
+			_, max := r.bounds()
+			r.setRawValue(f.internal, max)
+			f.enforceStats(r)
+		}
 		f.redrawContent()
 	case e.Key() == tcell.KeyEnter || e.Rune() == '\n':
+		f.enforceLegality()
 		internal := make([]byte, len(f.internal))
 		copy(internal, f.internal)
 		if f.submit(internal, f.amb, f.log) {
@@ -163,10 +172,145 @@ func (f *fpEditModal) move(n int) {
 	f.redrawContent()
 }
 
-// stepSel changes the value of the selected region by n steps.
+// stepSel changes the value of the selected region by n steps, keeping the result within the
+// ranges that are legal in game.
 func (f *fpEditModal) stepSel(n int64) {
-	ssbuRegions[f.sel].step(f.internal, n)
+	r := &ssbuRegions[f.sel]
+	if r.typ == "ability" {
+		f.stepAbility(r, n)
+	} else {
+		r.step(f.internal, n)
+		f.enforceStats(r)
+	}
 	f.redrawContent()
+}
+
+// abilityRegions returns the three ability regions.
+func (f *fpEditModal) abilityRegions() []*ssbuRegion {
+	var rs []*ssbuRegion
+	for i := range ssbuRegions {
+		if ssbuRegions[i].typ == "ability" {
+			rs = append(rs, &ssbuRegions[i])
+		}
+	}
+	return rs
+}
+
+// slotsUsed returns the number of support slots occupied by the equipped abilities.
+func (f *fpEditModal) slotsUsed() int64 {
+	var total int64
+	for _, r := range f.abilityRegions() {
+		total += ssbuAbilityCost[uint64(r.rawValue(f.internal))]
+	}
+	return total
+}
+
+// statBudget returns the legal total for the attack and defense stats given the currently
+// equipped abilities.
+func (f *fpEditModal) statBudget() int64 {
+	if f.slotsUsed() > 0 {
+		return ssbuStatBudgetAbilities
+	}
+	return ssbuStatBudgetFree
+}
+
+// stepAbility cycles an ability region by n steps, only through options whose slot cost fits the
+// slots left by the other equipped abilities.
+func (f *fpEditModal) stepAbility(r *ssbuRegion, n int64) {
+	dir := 1
+	if n < 0 {
+		dir = -1
+		n = -n
+	}
+
+	cur := 0
+	v := r.rawValue(f.internal)
+	for i, o := range r.options {
+		if int64(o.value) == v {
+			cur = i
+			break
+		}
+	}
+
+	free := ssbuAbilitySlots - (f.slotsUsed() - ssbuAbilityCost[uint64(v)])
+	for ; n > 0; n-- {
+		next := cur
+		for tries := 0; tries < len(r.options); tries++ {
+			next = (next + dir + len(r.options)) % len(r.options)
+			if ssbuAbilityCost[r.options[next].value] <= free {
+				break
+			}
+		}
+		cur = next
+	}
+
+	r.setRawValue(f.internal, int64(r.options[cur].value))
+	f.enforceStats(nil)
+}
+
+// maxAbility equips the highest value ability that still fits the free support slots.
+func (f *fpEditModal) maxAbility(r *ssbuRegion) {
+	free := ssbuAbilitySlots - (f.slotsUsed() - ssbuAbilityCost[uint64(r.rawValue(f.internal))])
+	for i := len(r.options) - 1; i >= 0; i-- {
+		if ssbuAbilityCost[r.options[i].value] <= free {
+			r.setRawValue(f.internal, int64(r.options[i].value))
+			break
+		}
+	}
+	f.enforceStats(nil)
+}
+
+// enforceStats keeps the attack and defense total within the legal stat budget. When edited is
+// one of the two stat regions that one is clamped, so the user sees their own input capped;
+// otherwise (e.g. when equipping an ability shrank the budget) attack is clamped before defense.
+func (f *fpEditModal) enforceStats(edited *ssbuRegion) {
+	att := ssbuRegionByName("Attack Stat")
+	def := ssbuRegionByName("Defense Stat")
+	if att == nil || def == nil {
+		return
+	}
+
+	budget := f.statBudget()
+	a, d := att.rawValue(f.internal), def.rawValue(f.internal)
+	if a+d <= budget {
+		return
+	}
+
+	switch edited {
+	case att:
+		att.setRawValue(f.internal, budget-d)
+	case def:
+		def.setRawValue(f.internal, budget-a)
+	default:
+		if a > budget {
+			att.setRawValue(f.internal, budget)
+			a = budget
+		}
+		def.setRawValue(f.internal, budget-a)
+	}
+	f.log <- encodeStringCell(fmt.Sprintf("Stats clamped to the legal budget of %d", budget))
+}
+
+// enforceLegality clamps everything to the ranges legal in game before applying: level
+// experience and stats to their legal limits, ability combinations to the support slot budget
+// (excess abilities are removed from the last slot backwards) and the stat total to the budget.
+func (f *fpEditModal) enforceLegality() {
+	for i := range ssbuRegions {
+		r := &ssbuRegions[i]
+		if r.legalMin != nil || r.legalMax != nil {
+			r.setRawValue(f.internal, r.rawValue(f.internal))
+		}
+	}
+
+	abilities := f.abilityRegions()
+	for i := len(abilities) - 1; i >= 0 && f.slotsUsed() > ssbuAbilitySlots; i-- {
+		if abilities[i].rawValue(f.internal) != 0 {
+			abilities[i].setRawValue(f.internal, 0)
+			f.log <- encodeStringCell("Removed " + abilities[i].name + ": over the support slot budget")
+		}
+	}
+
+	f.enforceStats(nil)
 }
 
 // pageRows returns the number of visible region rows.
@@ -211,6 +355,18 @@ func (f *fpEditModal) redrawContent() {
 	}
 
 	f.drawStr(left, top, "←/→ [ ] { } change value, z min, x max, ENTER apply, ESC abort", base.Attributes(tcell.AttrDim))
+
+	// Status line with the support slot usage and the legal stat budget.
+	if att, def := ssbuRegionByName("Attack Stat"), ssbuRegionByName("Defense Stat"); att != nil && def != nil {
+		total := att.rawValue(f.internal) + def.rawValue(f.internal)
+		budget := f.statBudget()
+		style := base.Attributes(tcell.AttrDim)
+		if total > budget {
+			style = base.Foreground(tcell.ColorRed).Attributes(tcell.AttrBold)
+		}
+		status := fmt.Sprintf("Ability slots used: %d/%d, stat budget: %d, attack + defense: %d", f.slotsUsed(), ssbuAbilitySlots, budget, total)
+		f.drawStr(left, top+1, trunc(status, right-left+1), style)
+	}
 
 	rows := f.pageRows()
 	if f.sel < f.offset {

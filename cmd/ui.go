@@ -27,6 +27,20 @@ func newEventTokenRemoved(timedOut bool) *eventTokenRemoved {
 	return e
 }
 
+// eventRemovalTick is posted twice per second while the token removal prompt is shown, so it can
+// update its countdown and flash its border.
+type eventRemovalTick struct {
+	tcell.EventTime
+	remaining time.Duration
+}
+
+// newEventRemovalTick creates a new eventRemovalTick ready for posting.
+func newEventRemovalTick(remaining time.Duration) *eventRemovalTick {
+	e := &eventRemovalTick{remaining: remaining}
+	e.SetEventNow()
+	return e
+}
+
 // element defines the basic methods which any ui element should implement.
 type element interface {
 	// activate marks the element as active, so it will process events. The element MUST return nil
@@ -175,14 +189,34 @@ func (u *ui) handleTokenRemoved() {
 		return
 	}
 
-	timeout := time.AfterFunc(removalTimeout, func() {
-		u.s.PostEvent(newEventTokenRemoved(true))
-	})
-	defer timeout.Stop()
+	// Drive the countdown and border flash of the prompt and post the timeout when the time is
+	// up. The ticker runs at half second intervals to get a visible flash.
+	stop := make(chan struct{})
+	defer close(stop)
+	go func() {
+		deadline := time.Now().Add(removalTimeout)
+		t := time.NewTicker(500 * time.Millisecond)
+		defer t.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case now := <-t.C:
+				rem := deadline.Sub(now)
+				if rem <= 0 {
+					u.s.PostEvent(newEventTokenRemoved(true))
+					return
+				}
+				u.s.PostEvent(newEventRemovalTick(rem))
+			}
+		}
+	}()
 
 	for {
 		ev := u.pollEvent()
 		switch e := ev.(type) {
+		case *eventRemovalTick:
+			u.removal.tick(e.remaining)
 		case *eventTokenRemoved:
 			if e.timedOut {
 				u.removal.deactivate()

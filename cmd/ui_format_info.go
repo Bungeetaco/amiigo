@@ -41,19 +41,19 @@ func formatAmiiboUsage(ai []apii.AmiiboInfo, id string) []byte {
 		if cu.Head+cu.Tail != id {
 			continue
 		}
-		if cu.GamesSwitch != nil {
+		if len(cu.GamesSwitch) > 0 {
 			usage = append(usage, "Switch:", "\n")
 			for _, i := range cu.GamesSwitch {
 				usage = append(usage, formatGameInfo(&i)...)
 			}
 		}
-		if cu.GamesWiiU != nil {
+		if len(cu.GamesWiiU) > 0 {
 			usage = append(usage, "WiiU:", "\n")
 			for _, i := range cu.GamesWiiU {
 				usage = append(usage, formatGameInfo(&i)...)
 			}
 		}
-		if cu.Games3DS != nil {
+		if len(cu.Games3DS) > 0 {
 			usage = append(usage, "3DS:", "\n")
 			for _, i := range cu.Games3DS {
 				usage = append(usage, formatGameInfo(&i)...)

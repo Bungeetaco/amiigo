@@ -62,7 +62,13 @@ func showAmiiboInfo(amb *amb, log, ifo, usg chan<- []byte, img *imageBox, baseUr
 		log <- encodeStringCell("Api get character usage: " + err.Error())
 		return ai.Name
 	}
-	usg <- formatAmiiboUsage(cu, id)
+	usage := formatAmiiboUsage(cu, id)
+	if len(usage) == 0 {
+		// Always send something, so the usage of a previous amiibo does not linger and an
+		// amiibo without usage data does not look like a rendering bug.
+		usage = encodeStringCell("No game usage information available for this amiibo (yet).")
+	}
+	usg <- usage
 
 	return ai.Name
 }

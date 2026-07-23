@@ -192,6 +192,14 @@ func (u *ui) interactFor(b element, am *amb) bool {
 		default:
 			ev := u.pollEvent()
 			switch e := ev.(type) {
+			case *tcell.EventMouse:
+				// Translate the mouse wheel to arrow keys for the active element.
+				switch e.Buttons() {
+				case tcell.WheelUp:
+					b.handleKey(tcell.NewEventKey(tcell.KeyUp, 0, tcell.ModNone))
+				case tcell.WheelDown:
+					b.handleKey(tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone))
+				}
 			case *tcell.EventKey:
 				switch {
 				// TODO: do we deal with CTRL+C here, or just leave that be?
@@ -585,6 +593,14 @@ func tui(conf *config) {
 			if !e.timedOut {
 				u.handleTokenRemoved()
 			}
+		case *tcell.EventMouse:
+			// The mouse wheel scrolls the usage box, the only box that regularly overflows.
+			switch e.Buttons() {
+			case tcell.WheelUp:
+				u.usageBox.scrollTo(-3)
+			case tcell.WheelDown:
+				u.usageBox.scrollTo(3)
+			}
 		case *tcell.EventKey:
 			switch {
 			case e.Key() == tcell.KeyEscape || e.Key() == tcell.KeyCtrlC:
@@ -610,6 +626,16 @@ func tui(conf *config) {
 				u.actions.flip(-1)
 			case e.Key() == tcell.KeyRight:
 				u.actions.flip(1)
+			// The vertical navigation keys scroll the usage box directly, no need to activate
+			// it with its shortcut key first.
+			case e.Key() == tcell.KeyUp:
+				u.usageBox.scrollTo(-1)
+			case e.Key() == tcell.KeyDown:
+				u.usageBox.scrollTo(1)
+			case e.Key() == tcell.KeyPgUp:
+				u.usageBox.scrollTo(-u.usageBox.pageSize())
+			case e.Key() == tcell.KeyPgDn:
+				u.usageBox.scrollTo(u.usageBox.pageSize())
 			case e.Rune() == 'T' || e.Rune() == 't':
 				conf.ui.clearOnRemove = !conf.ui.clearOnRemove
 				state := "enabled"

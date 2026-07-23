@@ -44,8 +44,10 @@ func newImageBox(s tcell.Screen, opts boxOpts, invert bool) *imageBox {
 }
 
 // setImage will set the image on the box and update the box, revealing it with a matrix style
-// animation.
+// animation. The box is blanked first so no cell of a previous, differently sized image lingers
+// next to or below the new one.
 func (i *imageBox) setImage(b image.Image) {
+	i.clearContent()
 	i.img = b
 	i.matrixReveal()
 	i.drawImage()
@@ -54,7 +56,9 @@ func (i *imageBox) setImage(b image.Image) {
 // charMatrix converts the active image to a character matrix fitting the viewport of the box.
 // It returns the matrix and the viewport width.
 func (i *imageBox) charMatrix() ([][]ascii.CharPixel, int) {
-	viewportWidth := i.width() - 4   // 4 = left and right borders + left and right margin
+	// One less than the drawable width: a row filling the full drawable width would not get an
+	// explicit newline and wrap by one character, shearing the whole image diagonally.
+	viewportWidth := i.width() - 5
 	viewportHeight := i.height() - 2 // 2 = only top and bottom borders
 
 	// We calculate the new width according to the aspect ratio of the image, but since we are dealing with vertically
@@ -62,11 +66,11 @@ func (i *imageBox) charMatrix() ([][]ascii.CharPixel, int) {
 	i.iOpts.FixedWidth = 2 * viewportHeight * i.img.Bounds().Max.X / i.img.Bounds().Max.Y
 	i.iOpts.FixedHeight = viewportHeight
 
-	// If the new calculated with turns out to be bigger than our viewport with, we'll adjust height based on the
-	// viewport width.
+	// If the new calculated width turns out to be bigger than our viewport width, size by the
+	// viewport width instead, dividing the height by the same factor of two.
 	if i.iOpts.FixedWidth > viewportWidth {
 		i.iOpts.FixedWidth = viewportWidth
-		i.iOpts.FixedHeight = viewportWidth * i.img.Bounds().Max.X / i.img.Bounds().Max.Y
+		i.iOpts.FixedHeight = viewportWidth * i.img.Bounds().Max.Y / i.img.Bounds().Max.X / 2
 	}
 
 	return i.conv.Image2CharPixelMatrix(i.img, &i.iOpts), viewportWidth

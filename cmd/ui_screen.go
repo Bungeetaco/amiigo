@@ -24,6 +24,7 @@ func initScreen() (tcell.Screen, error) {
 	}
 
 	s.HideCursor()
+	s.EnableMouse()
 	s.SetStyle(tcell.StyleDefault.Background(backColour).Foreground(fontColour))
 	s.Clear()
 

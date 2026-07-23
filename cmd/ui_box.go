@@ -208,7 +208,9 @@ func (b *box) update() {
 		b.buffer.Write(c)
 
 		b.renderContent()
-		if b.opts.typewriter {
+		// The typewriter reveal is skipped while a modal is open: the content draws behind the
+		// modal and a long animation would fight it for the screen.
+		if b.opts.typewriter && modalOpen.Load() == 0 {
 			b.drawContentTyped()
 		} else {
 			b.drawContent()

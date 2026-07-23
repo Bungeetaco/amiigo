@@ -15,7 +15,27 @@ type modal struct {
 	h              modalInputHandler
 	c              func()
 	coveredContent []coveredCell
+	staleCover     bool // Set when the screen under the modal changed while it was open.
 	log            chan<- []byte
+}
+
+// modalPart exposes the embedded modal of any modal based element.
+func (m *modal) modalPart() *modal {
+	return m
+}
+
+// markCoverStale flags the screen snapshot under the modal as outdated, e.g. when the boxes
+// underneath were redrawn while the modal was open.
+func (m *modal) markCoverStale() {
+	m.staleCover = true
+}
+
+// coverStale reports whether the screen under the modal changed while it was open, resetting the
+// flag. The caller should do a full redraw when true.
+func (m *modal) coverStale() bool {
+	s := m.staleCover
+	m.staleCover = false
+	return s
 }
 
 type coveredCell struct {
@@ -78,6 +98,7 @@ func (m *modal) activate(amb *amb) <-chan struct{} {
 	m.done = make(chan struct{})
 	m.amb = amb
 	m.active = true
+	m.staleCover = false
 	x, y := m.getXY()
 
 	// Check that m.coveredContent is nil to make the activate function idempotent.
@@ -95,12 +116,18 @@ func (m *modal) activate(amb *amb) <-chan struct{} {
 }
 
 // deactivate sets the active flag to false and restores the screen to the state before drawing.
+// When the screen under the modal changed while it was open, the stale snapshot is discarded
+// instead of restored; the caller detects this through coverStale and redraws.
 func (m *modal) deactivate() {
 	m.active = false
 	m.amb = nil
 
 	if m.c != nil {
 		m.c()
+	}
+
+	if m.staleCover {
+		m.coveredContent = nil
 	}
 
 	for _, c := range m.coveredContent {

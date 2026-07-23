@@ -49,7 +49,10 @@ func newImageBox(s tcell.Screen, opts boxOpts, invert bool) *imageBox {
 func (i *imageBox) setImage(b image.Image) {
 	i.clearContent()
 	i.img = b
-	i.matrixReveal()
+	// No reveal animation while a modal is open: the image draws behind the modal.
+	if modalOpen.Load() == 0 {
+		i.matrixReveal()
+	}
 	i.drawImage()
 }
 

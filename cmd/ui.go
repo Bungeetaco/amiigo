@@ -3,10 +3,15 @@ package main
 import (
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gdamore/tcell/v2"
 )
+
+// modalOpen counts the interactive elements currently open. While non zero, background drawing
+// tones itself down: the reveal animations are skipped and the active modal is redrawn on top.
+var modalOpen atomic.Int32
 
 // TODO: is there a way to get rid of this global var?
 var amiiboChan chan *amb // amiiboChan is the main channel to pass amb structs around.
@@ -87,6 +92,7 @@ type ui struct {
 	backup   *amb   // The last amiibo cleared from the view, restorable with the b action.
 	lastName string // Name of the last amiibo resolved through the API, for save suggestions.
 	tokenOn  bool   // Whether a token is currently present on the NFC portal.
+	active   *modal // The currently open modal, redrawn on top when the view changes beneath it.
 
 	sync.Mutex
 }
@@ -176,12 +182,22 @@ func (u *ui) interactFor(b element, am *amb) bool {
 	deactivate := func(b element) {
 		u.logBox.content <- encodeStringCell("Deactivating '" + b.name() + "' box")
 		b.deactivate()
+		if me, ok := b.(interface{ modalPart() *modal }); ok && me.modalPart().coverStale() {
+			// The view changed while the modal was open: redraw so no modal remnants are left.
+			u.queueRedraw()
+		}
 	}
 
 	u.logBox.content <- encodeStringCell("Activating '" + b.name() + "' box...")
 	done := b.activate(am)
 	if done == nil {
 		return false
+	}
+	modalOpen.Add(1)
+	defer modalOpen.Add(-1)
+	if me, ok := b.(interface{ modalPart() *modal }); ok {
+		u.setActiveModal(me.modalPart())
+		defer u.setActiveModal(nil)
 	}
 	u.logBox.content <- encodeStringCell("...'" + b.name() + "' box active; ESC to deactivate")
 	for {
@@ -245,6 +261,33 @@ func (u *ui) runClearAnimations() {
 	u.sync()
 }
 
+// setActiveModal tracks the currently open modal in a thread safe way.
+func (u *ui) setActiveModal(m *modal) {
+	u.Lock()
+	u.active = m
+	u.Unlock()
+}
+
+// activeModal returns the currently open modal, nil when none is open.
+func (u *ui) activeModal() *modal {
+	u.Lock()
+	defer u.Unlock()
+	return u.active
+}
+
+// redrawActive redraws the currently open modal on top of whatever was just drawn beneath it,
+// marking its screen snapshot stale so closing it triggers a full redraw instead of restoring
+// outdated content.
+func (u *ui) redrawActive() {
+	m := u.activeModal()
+	if m == nil {
+		return
+	}
+	m.markCoverStale()
+	m.draw(false, 0, 0)
+	u.show()
+}
+
 // queueRedraw requests a full screen redraw through the amiibo channel, so it runs on the
 // listener goroutine strictly after any reveal animation still in flight instead of wiping the
 // screen underneath one. The send happens on a separate goroutine to not block the caller.
@@ -303,6 +346,10 @@ func (u *ui) handleTokenRemoved() {
 		u.clearView()
 		return
 	}
+	modalOpen.Add(1)
+	defer modalOpen.Add(-1)
+	u.setActiveModal(u.removal.modal)
+	defer u.setActiveModal(nil)
 
 	// Drive the countdown and border flash of the prompt and post the timeout when the time is
 	// up. The ticker runs at half second intervals to get a visible flash.
@@ -557,6 +604,9 @@ func tui(conf *config) {
 				u.setAmiibo(am)
 				u.setLastName(showAmiiboInfo(am, u.logBox.content, u.infoBox.content, u.usageBox.content, u.imageBox, conf.amiiboApiBaseUrl))
 				u.draw(false)
+				// When a modal is open, the new amiibo just drew behind (animations are
+				// suppressed): put the modal back on top.
+				u.redrawActive()
 			case data := <-u.write:
 				writeToken(data, u.ambNfcId, ptl, u.logBox.content)
 			case <-conf.quit:

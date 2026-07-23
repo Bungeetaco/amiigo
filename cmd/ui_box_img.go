@@ -173,10 +173,10 @@ func (i *imageBox) drawImage() {
 			// TODO: add vertical padding
 			buf = append(buf, encodeImageCell(p, i.attrs)...)
 		}
-		// Add end of line when the viewport width is bigger than the image width.
-		if viewportWidth > len(l) {
-			buf = append(buf, encodeStringCell("\n")...)
-		}
+		// Every row ends in an explicit newline: relying on the implicit wrap for rows that fill
+		// the whole drawable width shifts each subsequent row by one character, shearing the
+		// image diagonally.
+		buf = append(buf, encodeStringCell("\n")...)
 	}
 
 	i.content <- buf
